@@ -1,49 +1,82 @@
 .como-participar {
-  padding: 3rem 1.5rem;
-  background: #ffffff;
-  text-align: center;
-}
+  background: linear-gradient(180deg, #f8fafc, #eef2ff);
+  padding: 4.5rem 1rem;
+  color: #020617;
 
-.como-participar h2 {
-  font-size: 2rem;
-  margin-bottom: 0.3rem;
-}
+  .container {
+    max-width: 1100px;
+    margin: auto;
+    text-align: center;
+  }
 
-.subtitulo {
-  font-size: 1.2rem;
-  color: #666;
-  margin-bottom: 2rem;
-}
+  h2 {
+    font-size: 2.3rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+  }
 
-.pasos {
-  display: grid;
-  gap: 1.5rem;
-}
+  .subtitle {
+    color: #475569;
+    margin-bottom: 3.5rem;
+    font-size: 1.05rem;
+  }
 
-.paso {
-  background: #f5f5f5;
-  padding: 1.5rem;
-  border-radius: 14px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.07);
-}
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
 
-.paso span {
-  display: inline-block;
-  background: #000;
-  color: #fff;
-  width: 36px;
-  height: 36px;
-  line-height: 36px;
-  border-radius: 50%;
-  margin-bottom: 0.8rem;
-  font-weight: bold;
-}
+  .step-card {
+    background: #ffffff;
+    padding: 2.4rem 2rem;
+    border-radius: 20px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    transition: all 0.35s ease;
+    position: relative;
+    overflow: hidden;
 
-.paso h3 {
-  margin-bottom: 0.5rem;
-}
+    &:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
 
-.paso p {
-  font-size: 0.95rem;
-  color: #444;
+      .icon {
+        background: #6366f1;
+        color: white;
+      }
+    }
+
+    .icon {
+      width: 60px;
+      height: 60px;
+      margin: auto;
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #eef2ff;
+      color: #6366f1;
+      font-size: 1.8rem;
+      transition: all 0.3s ease;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.6rem;
+      font-weight: 600;
+    }
+
+    p {
+      font-size: 0.95rem;
+      color: #475569;
+      line-height: 1.5;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .steps {
+      grid-template-columns: 1fr;
+    }
+  }
 }
