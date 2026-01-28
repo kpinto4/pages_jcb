@@ -1,6 +1,7 @@
 <section class="hero">
   <div class="hero-content">
 
+    <!-- Imagen premio mayor -->
     <img
       src="assets/img/premio-mayor.jpg"
       alt="Premio Mayor"
@@ -11,7 +12,7 @@
       <h1>Juego de la Ciudad Bonita</h1>
       <p>Participa por increíbles premios comprando tus stikers</p>
 
-      <!-- CONTADOR -->
+      <!-- Cuenta regresiva -->
       <div class="countdown">
         <div class="box">
           <span>{{ days }}</span>
@@ -31,18 +32,18 @@
         </div>
       </div>
 
-      <!-- PROGRESO DE STIKERS -->
+      <!-- Progreso de stikers -->
       <div class="progress-section">
-        <p class="progress-text">
-          {{ stikersVendidos }} de {{ totalStikers }} stikers vendidos
-          ({{ porcentajeVendidos }}%)
-        </p>
+        <div class="progress-info">
+          <span>{{ vendidos }} / {{ total }} stikers vendidos</span>
+          <span>{{ porcentaje }}%</span>
+        </div>
 
         <div class="progress-bar">
           <div
             class="progress-fill"
-            [style.width.%]="porcentajeVendidos"
-          ></div>
+            [style.width.%]="porcentaje">
+          </div>
         </div>
       </div>
 

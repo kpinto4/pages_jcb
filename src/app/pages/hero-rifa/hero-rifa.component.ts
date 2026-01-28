@@ -8,39 +8,32 @@ import { Component, OnInit } from '@angular/core';
 })
 export class HeroRifaComponent implements OnInit {
 
-  // Contador
+  // Cuenta regresiva
+  targetDate = new Date('2026-03-01T00:00:00');
   days = 0;
   hours = 0;
   minutes = 0;
   seconds = 0;
 
-  // Stikers
-  totalStikers = 1000;
-  stikersVendidos = 420;
-  porcentajeVendidos = 0;
+  // Progreso stikers
+  total = 1000;
+  vendidos = 350;
+  porcentaje = 0;
 
-  ngOnInit(): void {
-    this.calcularProgreso();
-    this.iniciarContador();
+  ngOnInit() {
+    this.calcularTiempo();
+    setInterval(() => this.calcularTiempo(), 1000);
+
+    this.porcentaje = Math.round((this.vendidos / this.total) * 100);
   }
 
-  calcularProgreso() {
-    this.porcentajeVendidos = Math.round(
-      (this.stikersVendidos / this.totalStikers) * 100
-    );
-  }
+  calcularTiempo() {
+    const now = new Date().getTime();
+    const distance = this.targetDate.getTime() - now;
 
-  iniciarContador() {
-    const fechaSorteo = new Date('2026-03-01T20:00:00').getTime();
-
-    setInterval(() => {
-      const ahora = new Date().getTime();
-      const diferencia = fechaSorteo - ahora;
-
-      this.days = Math.floor(diferencia / (1000 * 60 * 60 * 24));
-      this.hours = Math.floor((diferencia / (1000 * 60 * 60)) % 24);
-      this.minutes = Math.floor((diferencia / (1000 * 60)) % 60);
-      this.seconds = Math.floor((diferencia / 1000) % 60);
-    }, 1000);
+    this.days = Math.floor(distance / (1000 * 60 * 60 * 24));
+    this.hours = Math.floor((distance / (1000 * 60 * 60)) % 24);
+    this.minutes = Math.floor((distance / (1000 * 60)) % 60);
+    this.seconds = Math.floor((distance / 1000) % 60);
   }
 }
