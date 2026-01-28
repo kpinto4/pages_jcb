@@ -20,7 +20,7 @@
 
   .hero-text {
     h1 {
-      font-size: 2.5rem;
+      font-size: 2.4rem;
       margin-bottom: 0.5rem;
     }
 
@@ -30,11 +30,9 @@
     }
   }
 
-  /* CONTADOR */
   .countdown {
     display: flex;
     gap: 1rem;
-    margin-top: 1.5rem;
 
     .box {
       background: #1e293b;
@@ -55,35 +53,34 @@
     }
   }
 
-  /* PROGRESO DE STIKERS */
-  .progress-section {
-    margin-top: 1.5rem;
+  /* Progreso */
+  .progress-container {
+    margin-top: 2rem;
   }
 
   .progress-text {
     font-size: 0.9rem;
-    color: #e2e8f0;
-    margin-bottom: 0.4rem;
+    color: #cbd5f5;
+    margin-bottom: 0.5rem;
   }
 
   .progress-bar {
     width: 100%;
     height: 12px;
-    background-color: #1e293b;
+    background: #1e293b;
     border-radius: 999px;
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #22c55e, #16a34a);
-    transition: width 0.4s ease-in-out;
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+    border-radius: 999px;
+    transition: width 0.4s ease;
   }
-}
 
-/* RESPONSIVE */
-@media (max-width: 768px) {
-  .hero {
+  /* Responsive */
+  @media (max-width: 768px) {
     .hero-content {
       grid-template-columns: 1fr;
       text-align: center;
@@ -91,33 +88,6 @@
 
     .countdown {
       justify-content: center;
-      flex-wrap: wrap;
     }
   }
-}
-
-.progress-section {
-  margin-top: 2rem;
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-  color: #cbd5f5;
-  margin-bottom: 0.4rem;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 12px;
-  background: #1e293b;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #22c55e, #4ade80);
-  transition: width 0.5s ease;
 }
