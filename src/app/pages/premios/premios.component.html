@@ -1,30 +1,32 @@
 <section class="premios">
+  <h2>Premios Anticipados</h2>
 
-  <!-- PREMIO MAYOR -->
-  <div class="premio-mayor">
-    <img [src]="premioMayor.imagen" alt="Premio mayor">
-    <div class="info">
-      <h2>{{ premioMayor.titulo }}</h2>
-      <p>{{ premioMayor.descripcion }}</p>
+  <div class="cards">
+    <div class="card">
+      <img src="assets/img/anticipado1.jpg" alt="Premio 1">
+      <div class="info">
+        <h3>Premio Anticipado #1</h3>
+        <p>Participa automáticamente al comprar tus stikers.</p>
+        <span class="fecha">Juega: 15 Febrero 2026</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <img src="assets/img/anticipado2.jpg" alt="Premio 2">
+      <div class="info">
+        <h3>Premio Anticipado #2</h3>
+        <p>Más oportunidades de ganar antes del premio mayor.</p>
+        <span class="fecha">Juega: 22 Febrero 2026</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <img src="assets/img/anticipado3.jpg" alt="Premio 3">
+      <div class="info">
+        <h3>Premio Anticipado #3</h3>
+        <p>Sorteo especial entre participantes activos.</p>
+        <span class="fecha">Juega: 29 Febrero 2026</span>
+      </div>
     </div>
   </div>
-
-  <!-- ANTICIPADOS -->
-  <h3 class="titulo-anticipados">Premios Anticipados</h3>
-
-  <div class="anticipados">
-    <div class="card" *ngFor="let premio of anticipados">
-      <h4>{{ premio.nombre }}</h4>
-      <p>{{ premio.descripcion }}</p>
-
-      <button (click)="sortearAnticipado(premio)">
-        Sortear
-      </button>
-
-      <p class="ganador" *ngIf="premio.ganador">
-        Ganador: {{ premio.ganador }}
-      </p>
-    </div>
-  </div>
-
 </section>

@@ -1,53 +1,73 @@
 .premios {
-  padding: 3rem 1.5rem;
-  background: #fff;
+  background: #f8fafc;
+  padding: 4rem 1rem;
+
+  h2 {
+    text-align: center;
+    font-size: 2.2rem;
+    margin-bottom: 3rem;
+    color: #020617;
+  }
+
+  .cards {
+    max-width: 1200px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+
+  .card {
+    background: white;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+
+    &:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px rgba(2, 6, 23, 0.15);
+
+      img {
+        transform: scale(1.08);
+      }
+    }
+
+    img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+
+    .info {
+      padding: 1.5rem;
+
+      h3 {
+        margin-bottom: 0.5rem;
+        color: #020617;
+      }
+
+      p {
+        color: #475569;
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
+      }
+
+      .fecha {
+        display: block;
+        font-size: 0.85rem;
+        color: #0284c7;
+        font-weight: 600;
+      }
+    }
+  }
 }
 
-.premio-mayor {
-  display: grid;
-  gap: 1.5rem;
-  margin-bottom: 3rem;
-  text-align: center;
-}
-
-.premio-mayor img {
-  max-width: 100%;
-  border-radius: 16px;
-}
-
-.info h2 {
-  font-size: 2rem;
-}
-
-.titulo-anticipados {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.anticipados {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.card {
-  padding: 1.5rem;
-  background: #f6f6f6;
-  border-radius: 14px;
-  text-align: center;
-}
-
-button {
-  margin-top: 1rem;
-  padding: 0.5rem 1.2rem;
-  border: none;
-  background: #000;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.ganador {
-  margin-top: 1rem;
-  font-weight: bold;
-  color: green;
+/* Responsive */
+@media (max-width: 900px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
 }
