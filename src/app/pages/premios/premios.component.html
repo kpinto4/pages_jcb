@@ -1,0 +1,30 @@
+<section class="premios">
+
+  <!-- PREMIO MAYOR -->
+  <div class="premio-mayor">
+    <img [src]="premioMayor.imagen" alt="Premio mayor">
+    <div class="info">
+      <h2>{{ premioMayor.titulo }}</h2>
+      <p>{{ premioMayor.descripcion }}</p>
+    </div>
+  </div>
+
+  <!-- ANTICIPADOS -->
+  <h3 class="titulo-anticipados">Premios Anticipados</h3>
+
+  <div class="anticipados">
+    <div class="card" *ngFor="let premio of anticipados">
+      <h4>{{ premio.nombre }}</h4>
+      <p>{{ premio.descripcion }}</p>
+
+      <button (click)="sortearAnticipado(premio)">
+        Sortear
+      </button>
+
+      <p class="ganador" *ngIf="premio.ganador">
+        Ganador: {{ premio.ganador }}
+      </p>
+    </div>
+  </div>
+
+</section>

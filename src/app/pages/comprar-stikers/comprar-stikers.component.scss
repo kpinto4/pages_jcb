@@ -1,0 +1,47 @@
+.comprar {
+  padding: 3rem 1.5rem;
+  background: #f9f9f9;
+}
+
+.comprar h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.azar, .buscar {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+input {
+  padding: 0.5rem;
+  width: 200px;
+  margin-right: 0.5rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #000;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.lista {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.stiker {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+}
+
+.no-disponible {
+  opacity: 0.5;
+}

@@ -1,0 +1,53 @@
+.premios {
+  padding: 3rem 1.5rem;
+  background: #fff;
+}
+
+.premio-mayor {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+  text-align: center;
+}
+
+.premio-mayor img {
+  max-width: 100%;
+  border-radius: 16px;
+}
+
+.info h2 {
+  font-size: 2rem;
+}
+
+.titulo-anticipados {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.anticipados {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.card {
+  padding: 1.5rem;
+  background: #f6f6f6;
+  border-radius: 14px;
+  text-align: center;
+}
+
+button {
+  margin-top: 1rem;
+  padding: 0.5rem 1.2rem;
+  border: none;
+  background: #000;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ganador {
+  margin-top: 1rem;
+  font-weight: bold;
+  color: green;
+}
