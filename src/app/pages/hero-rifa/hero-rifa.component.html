@@ -1,54 +1,51 @@
 <section class="hero">
-  <h1>Gran Rifa del Mes</h1>
+  <div class="hero-content">
 
-  <p class="subtitle">
-    Participa y gana increíbles premios.  
-    Cada stiker te da la oportunidad de ganar.
-  </p>
+    <img
+      src="assets/img/premio-mayor.jpg"
+      alt="Premio Mayor"
+      class="hero-image"
+    />
 
-  <p class="fecha">
-    El sorteo será el<br />
-    <strong>sábado, 14 de febrero de 2026</strong>
-  </p>
+    <div class="hero-text">
+      <h1>Juego de la Ciudad Bonita</h1>
+      <p>Participa por increíbles premios comprando tus stikers</p>
 
-  <!-- Cuenta regresiva -->
-  <div class="contador">
-    <div class="box">
-      <span>{{ dias }}</span>
-      <small>DÍAS</small>
-    </div>
-    <div class="box">
-      <span>{{ horas }}</span>
-      <small>HORAS</small>
-    </div>
-    <div class="box">
-      <span>{{ minutos }}</span>
-      <small>MIN</small>
-    </div>
-    <div class="box">
-      <span>{{ segundos }}</span>
-      <small>SEG</small>
+      <!-- CONTADOR -->
+      <div class="countdown">
+        <div class="box">
+          <span>{{ days }}</span>
+          <small>Días</small>
+        </div>
+        <div class="box">
+          <span>{{ hours }}</span>
+          <small>Horas</small>
+        </div>
+        <div class="box">
+          <span>{{ minutes }}</span>
+          <small>Min</small>
+        </div>
+        <div class="box">
+          <span>{{ seconds }}</span>
+          <small>Seg</small>
+        </div>
+      </div>
+
+      <!-- PROGRESO DE STIKERS -->
+      <div class="progress-section">
+        <p class="progress-text">
+          {{ stikersVendidos }} de {{ totalStikers }} stikers vendidos
+          ({{ porcentajeVendidos }}%)
+        </p>
+
+        <div class="progress-bar">
+          <div
+            class="progress-fill"
+            [style.width.%]="porcentajeVendidos"
+          ></div>
+        </div>
+      </div>
+
     </div>
   </div>
-
-  <!-- Progreso -->
-  <div class="progreso">
-    <div class="info">
-      <span>Stikers vendidos</span>
-      <span><strong>67</strong> de 100</span>
-    </div>
-
-    <div class="barra">
-      <div class="relleno" style="width: 67%"></div>
-    </div>
-
-    <div class="info abajo">
-      <span class="disponibles">33 disponibles</span>
-      <span>67% vendido</span>
-    </div>
-  </div>
-
-  <button class="btn-comprar">
-    Comprar Stikers – $50 c/u
-  </button>
 </section>
