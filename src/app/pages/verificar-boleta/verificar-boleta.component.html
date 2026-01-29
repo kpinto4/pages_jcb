@@ -1,0 +1,35 @@
+<section class="verify">
+  <h1>Verifica tu boleta</h1>
+  <p>
+    Ingresa tu número de cédula para consultar las boletas asociadas a tu compra.
+  </p>
+
+  <form (submit)="buscarBoletas($event)">
+    <input
+      type="text"
+      placeholder="Número de cédula"
+      [(ngModel)]="cedula"
+      name="cedula"
+      required
+    >
+
+    <button type="submit">
+      Buscar boletas
+    </button>
+  </form>
+
+  <!-- Resultado -->
+  <div class="resultado" *ngIf="boletas.length > 0">
+    <h2>Boletas encontradas</h2>
+
+    <div class="boleta" *ngFor="let b of boletas">
+      <p><strong>Stiker:</strong> {{ b.codigo }}</p>
+      <p><strong>Números:</strong> {{ b.numero1 }} - {{ b.numero2 }}</p>
+      <p><strong>Estado:</strong>
+        <span [class.pagado]="b.pagado">
+          {{ b.pagado ? 'Pagado' : 'Pendiente' }}
+        </span>
+      </p>
+    </div>
+  </div>
+</section>

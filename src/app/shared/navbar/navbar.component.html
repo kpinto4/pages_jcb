@@ -9,13 +9,24 @@
       >
     </div>
 
-    <!-- Menú -->
+    <!-- Links -->
     <ul class="nav-links">
-      <li><a routerLink="/">Inicio</a></li>
-      <li><a routerLink="/como-participar">Cómo participar</a></li>
-      <li><a routerLink="/premios">Premios</a></li>
       <li>
-        <a routerLink="/comprar-stikers" class="btn-primary">
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+          Inicio
+        </a>
+      </li>
+
+      <li>
+        <a routerLink="/verificar-boleta" routerLinkActive="active">
+          Verificar boleta
+        </a>
+      </li>
+
+      <li>
+        <a routerLink="/comprar-stikers"
+           routerLinkActive="active"
+           class="btn-primary">
           Comprar stiker
         </a>
       </li>

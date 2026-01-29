@@ -1,39 +1,16 @@
-<section class="comprar">
-  <h2>Comprar Stikers</h2>
+<section class="buy">
+  <h1>Compra tus stikers</h1>
+  <p>Selecciona tus stikers disponibles y resérvalos por 24 horas.</p>
 
-  <!-- Compra al azar -->
-  <div class="azar">
-    <h3>Comprar al azar</h3>
-    <input type="number" min="1" [(ngModel)]="cantidadAzar">
-    <button (click)="comprarAzar()">Comprar</button>
-  </div>
+  <div class="grid">
+    <div class="card" *ngFor="let s of stikers">
+      <p class="code">{{ s.codigo }}</p>
+      <p class="nums">{{ s.n1 }} - {{ s.n2 }}</p>
 
-  <!-- Buscar por número -->
-  <div class="buscar">
-    <h3>Buscar por número</h3>
-    <input
-      type="number"
-      placeholder="Ingresa tu número"
-      [(ngModel)]="buscarNumero"
-    >
-  </div>
-
-  <!-- Listado -->
-  <div class="lista">
-    <div
-      class="stiker"
-      *ngFor="let stiker of stikersFiltrados"
-      [class.no-disponible]="!stiker.disponible"
-    >
-      <p><strong>{{ stiker.numero1 }} - {{ stiker.numero2 }}</strong></p>
-      <p>
-        {{ stiker.disponible ? 'Disponible' : 'No disponible' }}
-      </p>
       <button
-        *ngIf="stiker.disponible"
-        (click)="reservar(stiker)"
-      >
-        Reservar
+        [disabled]="!s.disponible"
+        (click)="reservar(s)">
+        {{ s.disponible ? 'Reservar' : 'No disponible' }}
       </button>
     </div>
   </div>

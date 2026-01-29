@@ -1,0 +1,35 @@
+.verify {
+  max-width: 600px;
+  margin: 4rem auto;
+  text-align: center;
+
+  input {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border-radius: 8px;
+    border: 1px solid #cbd5f5;
+  }
+
+  button {
+    background: #22c55e;
+    color: #020617;
+    padding: 0.7rem 1.5rem;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+  }
+
+  .boleta {
+    background: #f8fafc;
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  .pagado {
+    color: #22c55e;
+    font-weight: bold;
+  }
+}
