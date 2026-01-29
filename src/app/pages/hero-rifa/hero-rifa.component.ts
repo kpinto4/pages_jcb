@@ -1,8 +1,10 @@
 import { Component, OnInit } from '@angular/core';
+import { RouterModule } from '@angular/router';
 
 @Component({
   selector: 'app-hero-rifa',
   standalone: true,
+  imports: [RouterModule],
   templateUrl: './hero-rifa.component.html',
   styleUrls: ['./hero-rifa.component.scss']
 })
@@ -33,10 +35,10 @@ export class HeroRifaComponent implements OnInit {
       const now = new Date().getTime();
       const diff = targetDate - now;
 
-      this.days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      this.hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      this.minutes = Math.floor((diff / (1000 * 60)) % 60);
-      this.seconds = Math.floor((diff / 1000) % 60);
+      this.days = Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+      this.hours = Math.max(0, Math.floor((diff / (1000 * 60 * 60)) % 24));
+      this.minutes = Math.max(0, Math.floor((diff / (1000 * 60)) % 60));
+      this.seconds = Math.max(0, Math.floor((diff / 1000) % 60));
     }, 1000);
   }
 }
