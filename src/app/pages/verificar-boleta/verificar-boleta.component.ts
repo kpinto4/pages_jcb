@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { PaymentService, BoletaFromApi } from '../../core/services/payment.service';
 
 @Component({
   selector: 'app-verificar-boleta',
@@ -12,25 +13,33 @@ import { FormsModule } from '@angular/forms';
 export class VerificarBoletaComponent {
 
   cedula = '';
-  boletas: any[] = [];
+  boletas: BoletaFromApi[] = [];
+  buscando = false;
+  error = '';
+
+  constructor(private paymentService: PaymentService) {}
 
   buscarBoletas(event: Event) {
     event.preventDefault();
-
-    // SIMULACIÓN
-    this.boletas = [
-      {
-        codigo: 'STK-0234',
-        numero1: 1234,
-        numero2: 5678,
-        pagado: true
+    const ced = this.cedula.trim();
+    if (!ced) {
+      this.error = 'Ingresa tu número de cédula.';
+      return;
+    }
+    this.error = '';
+    this.buscando = true;
+    this.paymentService.getBoletas(ced).subscribe({
+      next: (res) => {
+        this.boletas = res.boletas || [];
+        this.buscando = false;
+        if (this.boletas.length === 0) {
+          this.error = 'No se encontraron boletas para esta cédula.';
+        }
       },
-      {
-        codigo: 'STK-0235',
-        numero1: 2234,
-        numero2: 6678,
-        pagado: false
+      error: () => {
+        this.buscando = false;
+        this.error = 'No se pudo conectar con el servidor. Verifica que el backend esté en marcha.';
       }
-    ];
+    });
   }
 }

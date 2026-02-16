@@ -1,21 +1,48 @@
 <section class="comprar">
 
-  <h2>Comprar Stikers</h2>
+  <header class="comprar-header">
+    <h1 class="comprar-title">Comprar Stikers</h1>
+    <p class="comprar-subtitle">Elige tus números y completa tu compra en pocos pasos</p>
+    <nav class="steps-indicator" aria-label="Progreso de la compra">
+      <div class="step-dot" [class.active]="step >= 1" [class.current]="step === 1">
+        <span class="step-num">1</span>
+        <span class="step-label">Stikers</span>
+      </div>
+      <div class="step-line" [class.filled]="step >= 2"></div>
+      <div class="step-dot" [class.active]="step >= 2" [class.current]="step === 2">
+        <span class="step-num">2</span>
+        <span class="step-label">Datos</span>
+      </div>
+      <div class="step-line" [class.filled]="step >= 3"></div>
+      <div class="step-dot" [class.active]="step >= 3" [class.current]="step === 3">
+        <span class="step-num">3</span>
+        <span class="step-label">Pago</span>
+      </div>
+      <div class="step-line" [class.filled]="step >= 4"></div>
+      <div class="step-dot" [class.active]="step >= 4" [class.current]="step === 4">
+        <span class="step-num">4</span>
+        <span class="step-label">Listo</span>
+      </div>
+    </nav>
+  </header>
 
   <!-- PASO 1 -->
   <div *ngIf="step === 1" class="panel">
 
     <h3>Selecciona tus stikers</h3>
 
+    <p class="cargando-stikers" *ngIf="cargandoStikers">Cargando stikers disponibles...</p>
+
     <!-- Barra de búsqueda -->
     <input
+      *ngIf="!cargandoStikers"
       class="buscador"
       placeholder="Buscar número (0000 - 9999)"
       [(ngModel)]="busqueda"
     >
 
     <!-- Compra aleatoria -->
-    <div class="aleatorio">
+    <div *ngIf="!cargandoStikers" class="aleatorio">
       <input
         type="number"
         min="1"
@@ -26,7 +53,7 @@
       </button>
     </div>
 
-    <div class="grid">
+    <div class="grid" *ngIf="!cargandoStikers">
       <button
         *ngFor="let s of stikersFiltrados"
         class="stiker"
@@ -53,19 +80,32 @@
   </div>
 
   <!-- PASO 2 -->
-  <div *ngIf="step === 2" class="panel">
-    <h3>Datos del comprador</h3>
+  <div *ngIf="step === 2" class="panel panel-form">
+    <h3 class="panel-title">Datos del comprador</h3>
+    <p class="panel-desc">Completa tu información para procesar la compra y enviar la confirmación.</p>
 
-    <form>
-      <input placeholder="Nombre completo" [(ngModel)]="cliente.nombre" name="nombre">
-      <input placeholder="Cédula" [(ngModel)]="cliente.cedula" name="cedula">
-      <input placeholder="Teléfono" [(ngModel)]="cliente.telefono" name="telefono">
-      <input placeholder="Correo electrónico" [(ngModel)]="cliente.email" name="email">
+    <form class="form-datos">
+      <div class="form-group">
+        <label for="nombre">Nombre completo</label>
+        <input id="nombre" type="text" placeholder="Ej. Juan Pérez" [(ngModel)]="cliente.nombre" name="nombre">
+      </div>
+      <div class="form-group">
+        <label for="cedula">Cédula</label>
+        <input id="cedula" type="text" placeholder="Ej. 1234567890" [(ngModel)]="cliente.cedula" name="cedula">
+      </div>
+      <div class="form-group">
+        <label for="telefono">Teléfono</label>
+        <input id="telefono" type="tel" placeholder="Ej. +593 99 123 4567" [(ngModel)]="cliente.telefono" name="telefono">
+      </div>
+      <div class="form-group">
+        <label for="email">Correo electrónico</label>
+        <input id="email" type="email" placeholder="tu@correo.com" [(ngModel)]="cliente.email" name="email">
+      </div>
     </form>
 
     <div class="acciones">
-      <button class="btn-outline" (click)="prevStep()">Volver</button>
-      <button class="btn-primary" (click)="nextStep()">Ir a pago</button>
+      <button type="button" class="btn-outline" (click)="prevStep()">Volver</button>
+      <button type="button" class="btn-primary" (click)="nextStep()">Ir a pago</button>
     </div>
   </div>
 
@@ -73,38 +113,53 @@
   <div *ngIf="step === 3" class="panel pago">
     <h3>Pasarela de pago</h3>
 
+    <p class="pago-cancelado" *ngIf="pagoCancelado">
+      El pago fue cancelado. Puedes intentar de nuevo o volver atrás.
+    </p>
+
     <p>Total a pagar</p>
-    <strong>${{ total }}</strong>
+    <strong>${{ total }} {{ currency === 'usd' ? 'USD' : currency.toUpperCase() }}</strong>
+
+    <p class="error-msg" *ngIf="errorPago">{{ errorPago }}</p>
 
     <div *ngIf="procesandoPago" class="loader">
-      Procesando pago...
+      Redirigiendo a la pasarela de pago...
     </div>
 
     <div *ngIf="!procesandoPago" class="acciones">
-      <button class="btn-outline" (click)="prevStep()">Volver</button>
-      <button class="btn-primary" (click)="simularPago()">
-        Pagar ahora
+      <button type="button" class="btn-outline" (click)="prevStep()">Volver</button>
+      <button type="button" class="btn-primary" (click)="irAPagar()">
+        Pagar con tarjeta (Stripe)
+      </button>
+      <button type="button" class="btn-demo" (click)="simularPago()">
+        Simular pago (demo)
       </button>
     </div>
   </div>
 
   <!-- PASO 4 -->
-  <div *ngIf="step === 4" class="panel confirmacion">
+  <div *ngIf="step === 4 && successData" class="panel confirmacion">
     <h3>Compra exitosa 🎉</h3>
 
-    <p>Gracias <strong>{{ cliente.nombre }}</strong></p>
+    <p *ngIf="successData.customerName">Gracias <strong>{{ successData.customerName }}</strong></p>
+    <p *ngIf="successData.customerEmail && !successData.customerName">
+      Se enviará la confirmación a <strong>{{ successData.customerEmail }}</strong>
+    </p>
+    <p *ngIf="!successData.customerName && !successData.customerEmail">Tu pago se ha procesado correctamente.</p>
 
-    <ul>
-      <li *ngFor="let s of seleccionados">
-        {{ s.numeroA }} - {{ s.numeroB }}
-      </li>
+    <p class="stikers-detail" *ngIf="successData.stikersDetail">
+      {{ successData.stikersDetail }}
+    </p>
+
+    <ul *ngIf="seleccionados.length > 0">
+      <li *ngFor="let s of seleccionados">{{ s.numeroA }} - {{ s.numeroB }}</li>
     </ul>
 
-    <p class="total">Total pagado: ${{ total }}</p>
+    <p class="total">Total pagado: ${{ successData.amountTotal }}</p>
 
     <div class="acciones-finales">
       <a routerLink="/" class="btn-outline">Volver al inicio</a>
-      <button class="btn-primary" (click)="step = 1">Comprar más</button>
+      <button type="button" class="btn-primary" (click)="step = 1; successData = null">Comprar más</button>
     </div>
   </div>
 

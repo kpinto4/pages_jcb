@@ -1,11 +1,17 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { PaymentService } from '../../core/services/payment.service';
 
-interface PremioAnticipado {
+interface SorteoItem {
   id: number;
   nombre: string;
-  descripcion: string;
-  ganador?: string;
+  fecha: string;
+  descripcion: string | null;
+  tipo: string;
+  estado: string;
+  premio_descripcion?: string | null;
+  numero_ganador_a: string | null;
+  numero_ganador_b: string | null;
 }
 
 @Component({
@@ -15,26 +21,31 @@ interface PremioAnticipado {
   templateUrl: './premios.component.html',
   styleUrls: ['./premios.component.scss']
 })
-export class PremiosComponent {
+export class PremiosComponent implements OnInit {
 
-  premioMayor = {
-    titulo: 'Premio Mayor',
-    descripcion: 'Moto 0 KM + bonos sorpresa',
-    imagen: 'assets/premio-mayor.jpg'
-  };
+  sorteos: SorteoItem[] = [];
+  loading = true;
 
-  anticipados: PremioAnticipado[] = [
-    { id: 1, nombre: 'Bono $100.000', descripcion: 'Sorteo anticipado' },
-    { id: 2, nombre: 'Audífonos', descripcion: 'Sorteo anticipado' },
-    { id: 3, nombre: 'Bono gasolina', descripcion: 'Sorteo anticipado' }
-  ];
+  constructor(private paymentService: PaymentService) {}
 
-  sortearAnticipado(premio: PremioAnticipado) {
-    premio.ganador = 'Stiker #23 - 78';
-    alert(`Ganador: ${premio.ganador}`);
+  ngOnInit(): void {
+    this.paymentService.getSorteos().subscribe({
+      next: (res) => {
+        this.sorteos = res.sorteos || [];
+        this.loading = false;
+      },
+      error: () => {
+        this.loading = false;
+      }
+    });
   }
 
-  asignarPremioMayor(numeroGanador: string) {
-    alert(`Premio mayor ganado por el stiker ${numeroGanador}`);
+  formatDate(fecha: string): string {
+    if (!fecha) return '';
+    try {
+      return new Date(fecha).toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch {
+      return fecha;
+    }
   }
 }

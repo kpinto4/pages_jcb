@@ -1,7 +1,26 @@
 <section class="premios">
-  <h2>Premios Anticipados</h2>
+  <h2>Premios y Sorteos</h2>
 
-  <div class="cards">
+  <p *ngIf="loading" class="loading">Cargando sorteos...</p>
+
+  <div class="cards" *ngIf="!loading && sorteos.length > 0">
+    <div class="card" *ngFor="let s of sorteos" [class.realizado]="s.estado === 'realizado'">
+      <img [src]="'assets/img/anticipado' + ((s.id % 3) || 1) + '.jpg'" [alt]="s.nombre">
+      <div class="info">
+        <h3>{{ s.nombre }}</h3>
+        <p *ngIf="s.premio_descripcion" class="premio-texto">{{ s.premio_descripcion }}</p>
+        <p *ngIf="!s.premio_descripcion">{{ s.descripcion || (s.tipo === 'mayor' ? 'Premio mayor del juego.' : 'Participa al comprar tus stikers.') }}</p>
+        <span class="fecha">Juega: {{ formatDate(s.fecha) }}</span>
+        <span class="estado-badge" [class.realizado]="s.estado === 'realizado'">{{ s.estado === 'realizado' ? 'Realizado' : 'Programado' }}</span>
+        <p *ngIf="s.estado === 'realizado' && s.numero_ganador_a" class="ganador">
+          Ganador: {{ s.numero_ganador_a }} - {{ s.numero_ganador_b }}
+        </p>
+        <p *ngIf="s.estado === 'realizado' && !s.numero_ganador_a" class="ganador">Sin números vendidos.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards" *ngIf="!loading && sorteos.length === 0">
     <div class="card">
       <img src="assets/img/anticipado1.jpg" alt="Premio 1">
       <div class="info">
@@ -10,7 +29,6 @@
         <span class="fecha">Juega: 15 Febrero 2026</span>
       </div>
     </div>
-
     <div class="card">
       <img src="assets/img/anticipado2.jpg" alt="Premio 2">
       <div class="info">
@@ -19,7 +37,6 @@
         <span class="fecha">Juega: 22 Febrero 2026</span>
       </div>
     </div>
-
     <div class="card">
       <img src="assets/img/anticipado3.jpg" alt="Premio 3">
       <div class="info">

@@ -1,7 +1,8 @@
 .como-participar {
-  background: linear-gradient(180deg, #f8fafc, #eef2ff);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--secondary) 100%);
   padding: 4.5rem 1rem;
-  color: #020617;
+  color: var(--text);
+  border-top: 1px solid var(--border);
 
   .container {
     max-width: 1100px;
@@ -13,10 +14,11 @@
     font-size: 2.3rem;
     font-weight: 700;
     margin-bottom: 0.6rem;
+    color: var(--text);
   }
 
   .subtitle {
-    color: #475569;
+    color: var(--text-muted);
     margin-bottom: 3.5rem;
     font-size: 1.05rem;
   }
@@ -28,20 +30,22 @@
   }
 
   .step-card {
-    background: #ffffff;
+    background: var(--background);
     padding: 2.4rem 2rem;
-    border-radius: 20px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
     transition: all 0.35s ease;
     position: relative;
     overflow: hidden;
 
     &:hover {
       transform: translateY(-10px);
-      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--primary);
 
       .icon {
-        background: #6366f1;
+        background: var(--primary);
         color: white;
       }
     }
@@ -55,8 +59,8 @@
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      background: #eef2ff;
-      color: #6366f1;
+      background: var(--primary-light);
+      color: var(--primary);
       font-size: 1.8rem;
       transition: all 0.3s ease;
     }
@@ -65,11 +69,12 @@
       font-size: 1.25rem;
       margin-bottom: 0.6rem;
       font-weight: 600;
+      color: var(--text);
     }
 
     p {
       font-size: 0.95rem;
-      color: #475569;
+      color: var(--text-muted);
       line-height: 1.5;
     }
   }

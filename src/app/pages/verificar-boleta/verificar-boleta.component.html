@@ -13,10 +13,12 @@
       required
     >
 
-    <button type="submit">
-      Buscar boletas
+    <button type="submit" [disabled]="buscando">
+      {{ buscando ? 'Buscando...' : 'Buscar boletas' }}
     </button>
   </form>
+
+  <p class="error-msg" *ngIf="error">{{ error }}</p>
 
   <!-- Resultado -->
   <div class="resultado" *ngIf="boletas.length > 0">

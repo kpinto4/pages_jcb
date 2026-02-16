@@ -1,0 +1,100 @@
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, catchError, of, throwError } from 'rxjs';
+import { environment } from '../../../environments/environment';
+
+export interface AdminStats {
+  totalOrders: number;
+  totalStikersSold: number;
+  totalRevenueCents: number;
+}
+
+export interface AdminOrder {
+  id: string;
+  cedula: string;
+  nombre: string;
+  email: string;
+  total_cents: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  items_count: number;
+}
+
+export interface Sorteo {
+  id: number;
+  nombre: string;
+  fecha: string;
+  descripcion: string | null;
+  tipo: string;
+  estado: string;
+  premio_descripcion: string | null;
+  numero_ganador_a: string | null;
+  numero_ganador_b: string | null;
+  created_at: string;
+}
+
+export interface AppConfig {
+  precio_stiker_cents?: string;
+  currency?: string;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AdminService {
+  private readonly apiUrl = environment.paymentApiUrl;
+
+  constructor(private http: HttpClient) {}
+
+  getStats(): Observable<AdminStats | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.get<AdminStats>(`${this.apiUrl}/api/admin/stats`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  getOrders(limit = 50): Observable<{ orders: AdminOrder[] } | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.get<{ orders: AdminOrder[] }>(`${this.apiUrl}/api/admin/orders`, {
+      params: { limit: limit.toString() }
+    }).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  getSorteos(): Observable<{ sorteos: Sorteo[] } | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.get<{ sorteos: Sorteo[] }>(`${this.apiUrl}/api/sorteos`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  createSorteo(body: { nombre: string; fecha: string; descripcion?: string; tipo?: string; premio_descripcion?: string }): Observable<Sorteo | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.post<Sorteo>(`${this.apiUrl}/api/admin/sorteos`, body).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  getConfig(): Observable<AppConfig | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.get<AppConfig>(`${this.apiUrl}/api/admin/config`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  updateConfig(body: { precioStikerCents?: number; currency?: string }): Observable<AppConfig | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.patch<AppConfig>(`${this.apiUrl}/api/admin/config`, body).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  realizarSorteo(id: number): Observable<Sorteo | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.post<Sorteo>(`${this.apiUrl}/api/admin/sorteos/${id}/realizar`, {}).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+}
