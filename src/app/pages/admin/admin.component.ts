@@ -214,13 +214,12 @@ export class AdminComponent implements OnInit {
       fecha: this.nuevoSorteo.fecha.trim(),
       descripcion: this.nuevoSorteo.descripcion.trim() || undefined,
       tipo: this.nuevoSorteo.tipo,
-      premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined,
-      numeros_beneficiados: undefined
+      premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined
     }).subscribe({
       next: (s) => {
         if (s) {
           this.sorteos = [...this.sorteos, s];
-          this.nuevoSorteo = { nombre: '', fecha: '', descripcion: '', tipo: 'anticipado', premio_descripcion: '' };
+          this.nuevoSorteo = { nombre: '', fecha: '', descripcion: '', tipo: 'anticipado', premio_descripcion: '', numeros_beneficiados: '' };
         }
         this.guardandoSorteo = false;
       },
