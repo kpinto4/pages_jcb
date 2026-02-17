@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminService, AdminStats, AdminOrder, Sorteo } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -43,6 +43,10 @@ export class AdminComponent implements OnInit {
   };
   guardandoConfig = false;
   configGuardada = false;
+
+  ganadorActual: SorteoGanadorResponse | null = null;
+
+  confirmandoId: string | null = null;
 
   constructor(
     private adminService: AdminService,
@@ -155,6 +159,23 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  confirmarEfectivo(o: AdminOrder): void {
+    if (o.status === 'paid') return;
+    this.confirmandoId = o.id;
+    this.adminService.confirmCashOrder(o.id).subscribe({
+      next: (updated) => {
+        if (updated) {
+          this.orders = this.orders.map(ord => ord.id === updated.id ? updated : ord);
+        }
+        this.confirmandoId = null;
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.confirmandoId = null;
+      }
+    });
+  }
+
   cargarSorteos(): void {
     this.adminService.getSorteos().subscribe({
       next: (r) => {
@@ -197,12 +218,14 @@ export class AdminComponent implements OnInit {
 
   realizarSorteo(s: Sorteo): void {
     if (s.estado === 'realizado') return;
+    this.ganadorActual = null;
     this.realizandoId = s.id;
     this.adminService.realizarSorteo(s.id).subscribe({
-      next: (updated) => {
-        if (updated) {
-          this.sorteos = this.sorteos.map(x => x.id === updated.id ? updated : x);
+      next: (res) => {
+        if (res?.sorteo) {
+          this.sorteos = this.sorteos.map(x => x.id === res.sorteo.id ? res.sorteo : x);
         }
+        this.ganadorActual = res ?? null;
         this.realizandoId = null;
       },
       error: (err) => {

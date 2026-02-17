@@ -34,6 +34,18 @@ export interface Sorteo {
   created_at: string;
 }
 
+export interface SorteoGanadorResponse {
+  sorteo: Sorteo;
+  ganador: {
+    order_id: string;
+    cedula: string;
+    nombre: string;
+    email: string;
+    telefono: string | null;
+    numeros: Array<{ numero_a: string; numero_b: string }>;
+  } | null;
+}
+
 export interface AppConfig {
   precio_stiker_cents?: string;
   currency?: string;
@@ -59,6 +71,13 @@ export class AdminService {
     return this.http.get<{ orders: AdminOrder[] }>(`${this.apiUrl}/api/admin/orders`, {
       params: { limit: limit.toString() }
     }).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  confirmCashOrder(id: string): Observable<AdminOrder | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.post<AdminOrder>(`${this.apiUrl}/api/admin/orders/${id}/confirm-cash`, {}).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );
   }
@@ -91,9 +110,9 @@ export class AdminService {
     );
   }
 
-  realizarSorteo(id: number): Observable<Sorteo | null> {
+  realizarSorteo(id: number): Observable<SorteoGanadorResponse | null> {
     if (!this.apiUrl) return of(null);
-    return this.http.post<Sorteo>(`${this.apiUrl}/api/admin/sorteos/${id}/realizar`, {}).pipe(
+    return this.http.post<SorteoGanadorResponse>(`${this.apiUrl}/api/admin/sorteos/${id}/realizar`, {}).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );
   }

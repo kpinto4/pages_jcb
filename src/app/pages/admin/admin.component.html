@@ -82,6 +82,7 @@
             <th>Stikers</th>
             <th>Total</th>
             <th>Estado</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -93,6 +94,17 @@
             <td>{{ o.items_count }}</td>
             <td>${{ formatCents(o.total_cents) }} {{ o.currency }}</td>
             <td><span class="badge" [class.paid]="o.status === 'paid'">{{ o.status === 'paid' ? 'Pagado' : 'Pendiente' }}</span></td>
+            <td>
+              <button
+                *ngIf="o.status !== 'paid'"
+                type="button"
+                class="btn-realizar"
+                [disabled]="confirmandoId === o.id"
+                (click)="confirmarEfectivo(o)"
+              >
+                {{ confirmandoId === o.id ? 'Confirmando...' : 'Confirmar pago (efectivo)' }}
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -151,6 +163,27 @@
       </div>
     </div>
     <p *ngIf="sorteos.length === 0" class="muted">No hay sorteos. Crea uno arriba.</p>
+
+    <!-- Detalle del cliente ganador tras realizar un sorteo -->
+    <div *ngIf="ganadorActual" class="ganador-detalle">
+      <h3>Detalle del cliente ganador</h3>
+      <ng-container *ngIf="ganadorActual.ganador; else sinGanador">
+        <p><strong>Sorteo:</strong> {{ ganadorActual.sorteo.nombre }} ({{ formatDate(ganadorActual.sorteo.fecha) }})</p>
+        <p><strong>Nombre:</strong> {{ ganadorActual.ganador.nombre }}</p>
+        <p><strong>Cédula:</strong> {{ ganadorActual.ganador.cedula }}</p>
+        <p><strong>Teléfono:</strong> {{ ganadorActual.ganador.telefono || '-' }}</p>
+        <p><strong>Email:</strong> {{ ganadorActual.ganador.email }}</p>
+        <p><strong>Números del cliente:</strong></p>
+        <ul>
+          <li *ngFor="let n of ganadorActual.ganador.numeros">
+            {{ n.numero_a }} - {{ n.numero_b }}
+          </li>
+        </ul>
+      </ng-container>
+      <ng-template #sinGanador>
+        <p class="muted">No había números vendidos cuando se realizó este sorteo. No hay cliente ganador.</p>
+      </ng-template>
+    </div>
   </section>
 
   <!-- CONFIGURACIÓN -->

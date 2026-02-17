@@ -9,7 +9,8 @@ import { randomUUID } from 'crypto';
 const db = await initDb();
 const app = express();
 const port = process.env.PORT || 3000;
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const adminPassword = process.env.ADMIN_PASSWORD || '';
 const jwtSecret = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || 'change-me-in-production';
@@ -272,6 +273,11 @@ app.get('/api/session/:sessionId', async (req, res) => {
     const orderId = session.metadata?.orderId;
     let stikersDetail = session.metadata?.stikersDetail || '';
     if (orderId) {
+      // Aseguramos que la orden quede marcada como pagada cuando la sesión está pagada
+      db.prepare(`
+        UPDATE orders SET status = 'paid' WHERE id = ?
+      `).run(orderId);
+
       const items = db.prepare(`
         SELECT numero_a, numero_b FROM order_items WHERE order_id = ?
       `).all(orderId);
@@ -300,7 +306,7 @@ app.post('/api/webhooks/stripe', (req, res) => {
   let event;
 
   try {
-    if (stripeWebhookSecret) {
+    if (stripe && stripeWebhookSecret) {
       event = stripe.webhooks.constructEvent(req.body, sig, stripeWebhookSecret);
     } else {
       event = req.body;
@@ -341,6 +347,35 @@ app.get('/api/admin/orders', (req, res) => {
     res.json({ orders: rows });
   } catch (err) {
     console.error('Error GET /api/admin/orders:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/orders/:id/confirm-cash', (req, res) => {
+  try {
+    const id = req.params.id;
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Orden no encontrada' });
+    }
+    if (order.status === 'paid') {
+      return res.status(400).json({ error: 'La orden ya está marcada como pagada' });
+    }
+
+    db.prepare(`
+      UPDATE orders SET status = 'paid' WHERE id = ?
+    `).run(id);
+
+    const updated = db.prepare(`
+      SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
+             (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
+      FROM orders o
+      WHERE o.id = ?
+    `).get(id);
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Error POST /api/admin/orders/:id/confirm-cash:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -499,7 +534,7 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
       return res.status(400).json({ error: 'Este sorteo ya fue realizado' });
     }
 
-    const items = db.prepare(`
+    const itemGanador = db.prepare(`
       SELECT oi.numero_a, oi.numero_b, oi.order_id
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
@@ -510,9 +545,34 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
 
     let numero_ganador_a = null;
     let numero_ganador_b = null;
-    if (items) {
-      numero_ganador_a = items.numero_a;
-      numero_ganador_b = items.numero_b;
+    let ganador = null;
+
+    if (itemGanador) {
+      numero_ganador_a = itemGanador.numero_a;
+      numero_ganador_b = itemGanador.numero_b;
+
+      const datosCliente = db.prepare(`
+        SELECT id, cedula, nombre, email, telefono
+        FROM orders
+        WHERE id = ?
+      `).get(itemGanador.order_id);
+
+      const numerosCliente = db.prepare(`
+        SELECT numero_a, numero_b
+        FROM order_items
+        WHERE order_id = ?
+      `).all(itemGanador.order_id);
+
+      if (datosCliente) {
+        ganador = {
+          order_id: datosCliente.id,
+          cedula: datosCliente.cedula,
+          nombre: datosCliente.nombre,
+          email: datosCliente.email,
+          telefono: datosCliente.telefono,
+          numeros: numerosCliente
+        };
+      }
     }
 
     db.prepare(`
@@ -520,7 +580,7 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
     `).run(numero_ganador_a, numero_ganador_b, id);
 
     const updated = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
-    res.json(updated);
+    res.json({ sorteo: updated, ganador });
   } catch (err) {
     console.error('Error POST /api/admin/sorteos/:id/realizar:', err);
     res.status(500).json({ error: err.message });
