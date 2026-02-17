@@ -140,6 +140,11 @@ export async function initDb() {
         premio_descripcion TEXT,
         numero_ganador_a TEXT,
         numero_ganador_b TEXT,
+        ganador_nombre TEXT,
+        ganador_cedula TEXT,
+        ganador_email TEXT,
+        ganador_telefono TEXT,
+        numeros_beneficiados TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -148,11 +153,28 @@ export async function initDb() {
         value TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS beneficios_anticipados (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sorteo_id INTEGER NOT NULL,
+        order_id TEXT NOT NULL,
+        numero_a TEXT NOT NULL,
+        numero_b TEXT NOT NULL,
+        cedula TEXT,
+        nombre TEXT,
+        email TEXT,
+        telefono TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (sorteo_id) REFERENCES sorteos(id),
+        FOREIGN KEY (order_id) REFERENCES orders(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_orders_cedula ON orders(cedula);
       CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
       CREATE INDEX IF NOT EXISTS idx_stiker_slots_order ON stiker_slots(order_id);
       CREATE INDEX IF NOT EXISTS idx_sorteos_fecha ON sorteos(fecha);
       CREATE INDEX IF NOT EXISTS idx_sorteos_estado ON sorteos(estado);
+      CREATE INDEX IF NOT EXISTS idx_beneficios_sorteo ON beneficios_anticipados(sorteo_id);
+      CREATE INDEX IF NOT EXISTS idx_beneficios_order ON beneficios_anticipados(order_id);
     `);
   }
 
@@ -212,8 +234,32 @@ export async function initDb() {
     } catch (_) {}
   }
 
+  function migrateSorteosExtended() {
+    try {
+      const info = db.prepare('PRAGMA table_info(sorteos)').all();
+      const have = (name) => info.some(c => c.name === name);
+      if (!have('ganador_nombre')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN ganador_nombre TEXT').run();
+      }
+      if (!have('ganador_cedula')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN ganador_cedula TEXT').run();
+      }
+      if (!have('ganador_email')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN ganador_email TEXT').run();
+      }
+      if (!have('ganador_telefono')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN ganador_telefono TEXT').run();
+      }
+      if (!have('numeros_beneficiados')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN numeros_beneficiados TEXT').run();
+      }
+      console.log('Migración: columnas de ganador y numeros_beneficiados añadidas a sorteos (si no existían).');
+    } catch (_) {}
+  }
+
   initSchema();
   migrateSorteosPremio();
+  migrateSorteosExtended();
   seedStikerSlots(300);
   seedSorteos();
   seedConfig();

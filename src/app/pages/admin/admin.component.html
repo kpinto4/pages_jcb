@@ -40,6 +40,9 @@
     <button type="button" class="tab" [class.active]="tab === 'sorteos'" (click)="tab = 'sorteos'">
       Sorteos
     </button>
+    <button type="button" class="tab" [class.active]="tab === 'beneficios'" (click)="tab = 'beneficios'">
+      Números beneficiados
+    </button>
     <button type="button" class="tab" [class.active]="tab === 'config'" (click)="tab = 'config'">
       Configuración
     </button>
@@ -132,6 +135,13 @@
       <div class="form-row">
         <input type="text" placeholder="Descripción (opcional)" [(ngModel)]="nuevoSorteo.descripcion">
       </div>
+      <div class="form-row">
+        <textarea
+          rows="2"
+          placeholder="10 números beneficiados (ej: 1234-5678, 0001-9999, ...)"
+          [(ngModel)]="nuevoSorteo.numeros_beneficiados"
+        ></textarea>
+      </div>
       <button type="button" class="btn-primary" [disabled]="guardandoSorteo" (click)="crearSorteo()">
         {{ guardandoSorteo ? 'Guardando...' : 'Crear sorteo' }}
       </button>
@@ -209,5 +219,40 @@
       <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
     </div>
   </section>
+
+    <!-- BENEFICIOS ANTICIPADOS -->
+    <section *ngIf="tab === 'beneficios'" class="panel">
+      <h2>Números beneficiados vendidos</h2>
+      <p class="muted">Listado de compras que coinciden con los números beneficiados definidos en sorteos anticipados.</p>
+      <div class="table-wrap" *ngIf="beneficios.length > 0; else sinBeneficios">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Sorteo</th>
+              <th>Cédula</th>
+              <th>Nombre</th>
+              <th>Número</th>
+              <th>Email</th>
+              <th>Teléfono</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let b of beneficios">
+              <td>{{ formatDate(b.created_at) }}</td>
+              <td>{{ b.sorteo_nombre || ('Sorteo #' + b.sorteo_id) }}</td>
+              <td>{{ b.cedula }}</td>
+              <td>{{ b.nombre }}</td>
+              <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
+              <td>{{ b.email }}</td>
+              <td>{{ b.telefono }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ng-template #sinBeneficios>
+        <p class="muted">Aún no hay números beneficiados vendidos.</p>
+      </ng-template>
+    </section>
   </ng-container>
 </div>

@@ -12,6 +12,7 @@ interface SorteoItem {
   premio_descripcion?: string | null;
   numero_ganador_a: string | null;
   numero_ganador_b: string | null;
+  numeros_beneficiados?: string | null;
 }
 
 @Component({

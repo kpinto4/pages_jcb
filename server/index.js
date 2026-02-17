@@ -155,6 +155,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const orderId = randomUUID();
     const cedula = (metadata.cedula || '').trim();
     const nombre = (customerName || '').trim() || 'Cliente';
+    const telefono = (metadata.telefono || '').trim();
 
     if (selectedStikers.length > 0) {
       const params = selectedStikers.flatMap(s => [s.numeroA, s.numeroB]);
@@ -176,7 +177,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
         db.prepare(`
           INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status)
           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-        `).run(orderId, cedula, nombre, customerEmail, (metadata.telefono || '').trim(), amount, currency.toLowerCase());
+        `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase());
 
         const insertItem = db.prepare(`
           INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
@@ -196,7 +197,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
       db.prepare(`
         INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-      `).run(orderId, cedula, nombre, customerEmail, (metadata.telefono || '').trim(), amount, currency.toLowerCase());
+      `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase());
     }
 
     const sessionConfig = {
@@ -242,6 +243,69 @@ app.post('/api/create-checkout-session', async (req, res) => {
     db.prepare(`
       UPDATE orders SET stripe_session_id = ? WHERE id = ?
     `).run(session.id, orderId);
+
+    // ---- NÚMEROS BENEFICIADOS (anticipados) ----
+    if (selectedStikers.length > 0) {
+      const sorteosBenef = db.prepare(`
+        SELECT id, numeros_beneficiados
+        FROM sorteos
+        WHERE tipo = 'anticipado'
+          AND estado = 'programado'
+          AND numeros_beneficiados IS NOT NULL
+          AND TRIM(numeros_beneficiados) <> ''
+      `).all();
+
+      if (sorteosBenef.length > 0) {
+        const toKey = (a, b) => {
+          const pa = String(a).padStart(4, '0');
+          const pb = String(b).padStart(4, '0');
+          return `${pa}-${pb}`;
+        };
+
+        const selectedKeys = selectedStikers.map(s => ({
+          key: toKey(s.numeroA, s.numeroB),
+          numeroA: String(s.numeroA).padStart(4, '0'),
+          numeroB: String(s.numeroB).padStart(4, '0')
+        }));
+
+        const insertBenef = db.prepare(`
+          INSERT INTO beneficios_anticipados (sorteo_id, order_id, numero_a, numero_b, cedula, nombre, email, telefono)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const srt of sorteosBenef) {
+          const text = (srt.numeros_beneficiados || '').toString();
+          const tokens = text.split(/[,;\n]/).map(t => t.trim()).filter(Boolean);
+          const set = new Set();
+          for (const tok of tokens) {
+            const cleaned = tok.replace(/\s+/g, '');
+            const parts = cleaned.split(/[-:]/);
+            if (parts.length === 2) {
+              const ka = parts[0].padStart(4, '0');
+              const kb = parts[1].padStart(4, '0');
+              set.add(`${ka}-${kb}`);
+            }
+          }
+
+          if (set.size === 0) continue;
+
+          for (const s of selectedKeys) {
+            if (set.has(s.key)) {
+              insertBenef.run(
+                srt.id,
+                orderId,
+                s.numeroA,
+                s.numeroB,
+                cedula || null,
+                nombre || null,
+                customerEmail || null,
+                telefono || null
+              );
+            }
+          }
+        }
+      }
+    }
 
     res.json({ url: session.url, sessionId: session.id });
   } catch (err) {
@@ -396,6 +460,23 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
+app.get('/api/admin/beneficios', (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT b.id, b.sorteo_id, s.nombre as sorteo_nombre, b.order_id,
+             b.numero_a, b.numero_b, b.cedula, b.nombre, b.email, b.telefono, b.created_at
+      FROM beneficios_anticipados b
+      LEFT JOIN sorteos s ON s.id = b.sorteo_id
+      ORDER BY b.created_at DESC
+      LIMIT 100
+    `).all();
+    res.json({ beneficios: rows });
+  } catch (err) {
+    console.error('Error GET /api/admin/beneficios:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ----- CONFIG (público: precio stiker para la tienda) -----
 
 app.get('/api/config', (req, res) => {
@@ -450,7 +531,7 @@ app.patch('/api/admin/config', (req, res) => {
 
 // ----- SORTEOS (público y admin) -----
 
-const sorteosSelect = 'id, nombre, fecha, descripcion, tipo, estado, premio_descripcion, numero_ganador_a, numero_ganador_b, created_at';
+const sorteosSelect = 'id, nombre, fecha, descripcion, tipo, estado, premio_descripcion, numero_ganador_a, numero_ganador_b, numeros_beneficiados, created_at';
 
 app.get('/api/sorteos', (req, res) => {
   try {
@@ -469,6 +550,40 @@ app.get('/api/sorteos', (req, res) => {
   }
 });
 
+app.get('/api/sorteos/home', (req, res) => {
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    const principal = db.prepare(`
+      SELECT ${sorteosSelect}
+      FROM sorteos
+      WHERE tipo = 'mayor' AND estado = 'programado' AND fecha >= ?
+      ORDER BY fecha ASC
+      LIMIT 1
+    `).get(hoy);
+
+    const anticipados = db.prepare(`
+      SELECT ${sorteosSelect}
+      FROM sorteos
+      WHERE tipo = 'anticipado' AND estado = 'programado' AND fecha >= ?
+      ORDER BY fecha ASC
+    `).all(hoy);
+
+    const ganadores = db.prepare(`
+      SELECT ${sorteosSelect}, ganador_nombre, ganador_cedula, ganador_email, ganador_telefono
+      FROM sorteos
+      WHERE estado = 'realizado'
+      ORDER BY fecha DESC
+      LIMIT 10
+    `).all();
+
+    res.json({ principal: principal || null, anticipados, ganadores });
+  } catch (err) {
+    console.error('Error GET /api/sorteos/home:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sorteos/:id', (req, res) => {
   try {
     const row = db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
@@ -482,14 +597,14 @@ app.get('/api/sorteos/:id', (req, res) => {
 
 app.post('/api/admin/sorteos', (req, res) => {
   try {
-    const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion } = req.body;
+    const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion, numeros_beneficiados } = req.body;
     if (!nombre || !fecha) {
       return res.status(400).json({ error: 'Faltan nombre o fecha' });
     }
     const result = db.prepare(`
-      INSERT INTO sorteos (nombre, fecha, descripcion, tipo, estado, premio_descripcion)
-      VALUES (?, ?, ?, ?, 'programado', ?)
-    `).run(nombre, fecha, descripcion || '', tipo, premio_descripcion || null);
+      INSERT INTO sorteos (nombre, fecha, descripcion, tipo, estado, premio_descripcion, numeros_beneficiados)
+      VALUES (?, ?, ?, ?, 'programado', ?, ?)
+    `).run(nombre, fecha, descripcion || '', tipo, premio_descripcion || null, (numeros_beneficiados || '').trim() || null);
     const row = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(row);
   } catch (err) {
@@ -500,7 +615,7 @@ app.post('/api/admin/sorteos', (req, res) => {
 
 app.patch('/api/admin/sorteos/:id', (req, res) => {
   try {
-    const { nombre, fecha, descripcion, tipo, estado, premio_descripcion } = req.body;
+    const { nombre, fecha, descripcion, tipo, estado, premio_descripcion, numeros_beneficiados } = req.body;
     const id = req.params.id;
     const current = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     if (!current) return res.status(404).json({ error: 'Sorteo no encontrado' });
@@ -513,6 +628,7 @@ app.patch('/api/admin/sorteos/:id', (req, res) => {
     if (tipo !== undefined) { updates.push('tipo = ?'); params.push(tipo); }
     if (estado !== undefined) { updates.push('estado = ?'); params.push(estado); }
     if (premio_descripcion !== undefined) { updates.push('premio_descripcion = ?'); params.push(premio_descripcion); }
+    if (numeros_beneficiados !== undefined) { updates.push('numeros_beneficiados = ?'); params.push((numeros_beneficiados || '').trim() || null); }
     if (updates.length === 0) return res.json(current);
 
     params.push(id);
@@ -576,8 +692,48 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
     }
 
     db.prepare(`
-      UPDATE sorteos SET estado = 'realizado', numero_ganador_a = ?, numero_ganador_b = ? WHERE id = ?
-    `).run(numero_ganador_a, numero_ganador_b, id);
+      UPDATE sorteos
+      SET estado = 'realizado',
+          numero_ganador_a = ?,
+          numero_ganador_b = ?,
+          ganador_nombre = ?,
+          ganador_cedula = ?,
+          ganador_email = ?,
+          ganador_telefono = ?
+      WHERE id = ?
+    `).run(
+      numero_ganador_a,
+      numero_ganador_b,
+      ganador ? ganador.nombre : null,
+      ganador ? ganador.cedula : null,
+      ganador ? ganador.email : null,
+      ganador ? ganador.telefono : null,
+      id
+    );
+
+    // Si es el premio mayor, reiniciamos los stikers para una nueva campaña
+    if (sorteo.tipo === 'mayor') {
+      const existing = db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+      if (existing.n > 0) {
+        db.exec('DELETE FROM stiker_slots;');
+      }
+      const insertSlot = db.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
+      const random4 = () => Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const seen = new Set();
+      const total = 300;
+      for (let i = 0; i < total; i++) {
+        let a = random4();
+        let b = random4();
+        const key = `${a}-${b}`;
+        if (seen.has(key)) {
+          i--;
+          continue;
+        }
+        seen.add(key);
+        insertSlot.run(a, b);
+      }
+      console.log('Se reiniciaron los stiker_slots después del Premio Mayor.');
+    }
 
     const updated = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     res.json({ sorteo: updated, ganador });

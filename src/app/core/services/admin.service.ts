@@ -31,6 +31,7 @@ export interface Sorteo {
   premio_descripcion: string | null;
   numero_ganador_a: string | null;
   numero_ganador_b: string | null;
+  numeros_beneficiados?: string | null;
   created_at: string;
 }
 
@@ -44,6 +45,20 @@ export interface SorteoGanadorResponse {
     telefono: string | null;
     numeros: Array<{ numero_a: string; numero_b: string }>;
   } | null;
+}
+
+export interface BeneficioAnticipado {
+  id: number;
+  sorteo_id: number;
+  sorteo_nombre: string | null;
+  order_id: string;
+  numero_a: string;
+  numero_b: string;
+  cedula: string | null;
+  nombre: string | null;
+  email: string | null;
+  telefono: string | null;
+  created_at: string;
 }
 
 export interface AppConfig {
@@ -71,6 +86,13 @@ export class AdminService {
     return this.http.get<{ orders: AdminOrder[] }>(`${this.apiUrl}/api/admin/orders`, {
       params: { limit: limit.toString() }
     }).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  getBeneficios(): Observable<{ beneficios: BeneficioAnticipado[] } | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.get<{ beneficios: BeneficioAnticipado[] }>(`${this.apiUrl}/api/admin/beneficios`).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );
   }

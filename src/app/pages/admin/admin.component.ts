@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -18,7 +18,7 @@ export class AdminComponent implements OnInit {
   loginError = '';
   loginLoading = false;
 
-  tab: 'stats' | 'orders' | 'sorteos' | 'config' = 'stats';
+  tab: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'config' = 'stats';
 
   stats: AdminStats | null = null;
   orders: AdminOrder[] = [];
@@ -32,7 +32,8 @@ export class AdminComponent implements OnInit {
     fecha: '',
     descripcion: '',
     tipo: 'anticipado',
-    premio_descripcion: ''
+    premio_descripcion: '',
+    numeros_beneficiados: ''
   };
   guardandoSorteo = false;
   realizandoId: number | null = null;
@@ -48,6 +49,8 @@ export class AdminComponent implements OnInit {
 
   confirmandoId: string | null = null;
 
+  beneficios: BeneficioAnticipado[] = [];
+
   constructor(
     private adminService: AdminService,
     private auth: AdminAuthService
@@ -59,6 +62,7 @@ export class AdminComponent implements OnInit {
       this.cargarStats();
       this.cargarOrders();
       this.cargarSorteos();
+      this.cargarBeneficios();
       this.cargarConfig();
     }
   }
@@ -187,6 +191,17 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  cargarBeneficios(): void {
+    this.adminService.getBeneficios().subscribe({
+      next: (r) => {
+        this.beneficios = r?.beneficios ?? [];
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+      }
+    });
+  }
+
   crearSorteo(): void {
     if (!this.nuevoSorteo.nombre.trim() || !this.nuevoSorteo.fecha.trim()) {
       this.error = 'Nombre y fecha son obligatorios.';
@@ -199,7 +214,8 @@ export class AdminComponent implements OnInit {
       fecha: this.nuevoSorteo.fecha.trim(),
       descripcion: this.nuevoSorteo.descripcion.trim() || undefined,
       tipo: this.nuevoSorteo.tipo,
-      premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined
+      premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined,
+      numeros_beneficiados: undefined
     }).subscribe({
       next: (s) => {
         if (s) {

@@ -16,6 +16,10 @@
           Ganador: {{ s.numero_ganador_a }} - {{ s.numero_ganador_b }}
         </p>
         <p *ngIf="s.estado === 'realizado' && !s.numero_ganador_a" class="ganador">Sin números vendidos.</p>
+        <div *ngIf="s.numeros_beneficiados && s.estado === 'programado' && s.tipo === 'anticipado'" class="beneficiados">
+          <h4>10 números beneficiados</h4>
+          <p>{{ s.numeros_beneficiados }}</p>
+        </div>
       </div>
     </div>
   </div>
