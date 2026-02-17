@@ -58,7 +58,7 @@ En este proyecto el backend está en la carpeta **`server/`**.
    Edita `server/.env` y rellena:
    ```env
    PORT=3000
-   STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+   STRIPE_SECRET_KEY
    ```
    Sustituye `sk_test_...` por tu **Secret key** de Stripe (modo test).
 
