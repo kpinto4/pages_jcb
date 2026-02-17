@@ -3,9 +3,10 @@ import express from 'express';
 import cors from 'cors';
 import Stripe from 'stripe';
 import jwt from 'jsonwebtoken';
-import { db } from './db.js';
+import { initDb } from './db.js';
 import { randomUUID } from 'crypto';
 
+const db = await initDb();
 const app = express();
 const port = process.env.PORT || 3000;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
