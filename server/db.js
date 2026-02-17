@@ -59,18 +59,20 @@ function pragma(name, value) {
 }
 
 function transaction(fn) {
-  inTransaction = true;
-  sqliteDb.run('BEGIN');
-  try {
-    fn();
-    sqliteDb.run('COMMIT');
-    inTransaction = false;
-    save();
-  } catch (e) {
-    sqliteDb.run('ROLLBACK');
-    inTransaction = false;
-    throw e;
-  }
+  return function runTransaction() {
+    inTransaction = true;
+    sqliteDb.run('BEGIN');
+    try {
+      fn();
+      sqliteDb.run('COMMIT');
+      inTransaction = false;
+      save();
+    } catch (e) {
+      sqliteDb.run('ROLLBACK');
+      inTransaction = false;
+      throw e;
+    }
+  };
 }
 
 function createDbWrapper() {
