@@ -1,53 +1,24 @@
 <section class="premios">
-  <h2>Premios y Sorteos</h2>
+  <h2>Últimos premios mayores realizados</h2>
 
-  <p *ngIf="loading" class="loading">Cargando sorteos...</p>
+  <p *ngIf="loading" class="loading">Cargando...</p>
 
   <div class="cards" *ngIf="!loading && sorteos.length > 0">
     <div class="card" *ngFor="let s of sorteos" [class.realizado]="s.estado === 'realizado'">
-      <img [src]="'assets/img/anticipado' + ((s.id % 3) || 1) + '.jpg'" [alt]="s.nombre">
+      <img [src]="s.imagen_url || ('assets/img/anticipado' + ((s.id % 3) || 1) + '.jpg')" [alt]="s.nombre">
       <div class="info">
         <h3>{{ s.nombre }}</h3>
         <p *ngIf="s.premio_descripcion" class="premio-texto">{{ s.premio_descripcion }}</p>
-        <p *ngIf="!s.premio_descripcion">{{ s.descripcion || (s.tipo === 'mayor' ? 'Premio mayor del juego.' : 'Participa al comprar tus stikers.') }}</p>
-        <span class="fecha">Juega: {{ formatDate(s.fecha) }}</span>
-        <span class="estado-badge" [class.realizado]="s.estado === 'realizado'">{{ s.estado === 'realizado' ? 'Realizado' : 'Programado' }}</span>
-        <p *ngIf="s.estado === 'realizado' && s.numero_ganador_a" class="ganador">
+        <p *ngIf="!s.premio_descripcion">{{ s.descripcion || 'Premio mayor del juego.' }}</p>
+        <span class="fecha">Fecha: {{ formatDate(s.fecha) }}</span>
+        <span class="estado-badge realizado">Realizado</span>
+        <p *ngIf="s.numero_ganador_a" class="ganador">
           Ganador: {{ s.numero_ganador_a }} - {{ s.numero_ganador_b }}
         </p>
-        <p *ngIf="s.estado === 'realizado' && !s.numero_ganador_a" class="ganador">Sin números vendidos.</p>
-        <div *ngIf="s.numeros_beneficiados && s.estado === 'programado' && s.tipo === 'anticipado'" class="beneficiados">
-          <h4>10 números beneficiados</h4>
-          <p>{{ s.numeros_beneficiados }}</p>
-        </div>
+        <p *ngIf="!s.numero_ganador_a" class="ganador">Sin números vendidos.</p>
       </div>
     </div>
   </div>
 
-  <div class="cards" *ngIf="!loading && sorteos.length === 0">
-    <div class="card">
-      <img src="assets/img/anticipado1.jpg" alt="Premio 1">
-      <div class="info">
-        <h3>Premio Anticipado #1</h3>
-        <p>Participa automáticamente al comprar tus stikers.</p>
-        <span class="fecha">Juega: 15 Febrero 2026</span>
-      </div>
-    </div>
-    <div class="card">
-      <img src="assets/img/anticipado2.jpg" alt="Premio 2">
-      <div class="info">
-        <h3>Premio Anticipado #2</h3>
-        <p>Más oportunidades de ganar antes del premio mayor.</p>
-        <span class="fecha">Juega: 22 Febrero 2026</span>
-      </div>
-    </div>
-    <div class="card">
-      <img src="assets/img/anticipado3.jpg" alt="Premio 3">
-      <div class="info">
-        <h3>Premio Anticipado #3</h3>
-        <p>Sorteo especial entre participantes activos.</p>
-        <span class="fecha">Juega: 29 Febrero 2026</span>
-      </div>
-    </div>
-  </div>
+  <p *ngIf="!loading && sorteos.length === 0" class="loading">Aún no hay premios mayores realizados.</p>
 </section>

@@ -1,10 +1,10 @@
 <section class="verify">
-  <h1>Verifica tu boleta</h1>
+  <h1>Verifica tu stiker</h1>
   <p>
-    Ingresa tu número de cédula para consultar las boletas asociadas a tu compra.
+    Ingresa tu número de cédula para consultar los stikers asociados a tu compra.
   </p>
 
-  <form (submit)="buscarBoletas($event)">
+  <form (submit)="buscarStikers($event)">
     <input
       type="text"
       placeholder="Número de cédula"
@@ -14,17 +14,17 @@
     >
 
     <button type="submit" [disabled]="buscando">
-      {{ buscando ? 'Buscando...' : 'Buscar boletas' }}
+      {{ buscando ? 'Buscando...' : 'Buscar stikers' }}
     </button>
   </form>
 
   <p class="error-msg" *ngIf="error">{{ error }}</p>
 
   <!-- Resultado -->
-  <div class="resultado" *ngIf="boletas.length > 0">
-    <h2>Boletas encontradas</h2>
+  <div class="resultado" *ngIf="stikers.length > 0">
+    <h2>Stikers encontrados</h2>
 
-    <div class="boleta" *ngFor="let b of boletas">
+    <div class="stiker" *ngFor="let b of stikers">
       <p><strong>Stiker:</strong> {{ b.codigo }}</p>
       <p><strong>Números:</strong> {{ b.numero1 }} - {{ b.numero2 }}</p>
       <p><strong>Estado:</strong>

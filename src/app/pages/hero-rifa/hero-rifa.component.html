@@ -1,25 +1,39 @@
 <section class="hero">
   <div class="hero-content">
 
-    <!-- Imagen Premio Mayor -->
+    <!-- Imagen Premio Mayor (oculta si no hay sorteo) -->
     <img
-      src="assets/img/premio-mayor.jpg"
+      *ngIf="principal"
+      [src]="heroImageUrl"
       alt="Premio Mayor"
       class="hero-image"
     >
 
     <!-- Texto + Contador + Progreso -->
     <div class="hero-text">
-      <h1>Juego de la Ciudad Bonita</h1>
-      <p>Participa por increíbles premios comprando tus stikers</p>
+      <h1 *ngIf="principal">
+        {{ principal.nombre }}
+      </h1>
+      <h1 *ngIf="!principal" class="hero-proximamente">
+        Próximamente tendremos más sorteos
+      </h1>
+      <p *ngIf="principal">
+        {{ principal.premio_descripcion || 'Participa por increíbles premios comprando tus stikers' }}
+      </p>
+      <p *ngIf="!principal">
+        Vuelve pronto para participar en el próximo sorteo.
+      </p>
 
-      <!-- BOTÓN COMPRAR STIKERS -->
-      <a routerLink="/comprar-stikers" class="btn-comprar">
+      <!-- BOTÓN COMPRAR: solo activo si hay sorteo -->
+      <a *ngIf="principal" routerLink="/comprar-stikers" class="btn-comprar">
         🎟️ Comprar Stikers
       </a>
+      <span *ngIf="!principal" class="btn-comprar btn-comprar-disabled" aria-disabled="true">
+        🎟️ Comprar Stikers (próximamente)
+      </span>
 
-      <!-- Contador -->
-      <div class="countdown">
+      <!-- Contador: solo si hay sorteo -->
+      <div *ngIf="principal" class="countdown">
         <div class="box">
           <span>{{ days }}</span>
           <small>Días</small>
@@ -38,8 +52,8 @@
         </div>
       </div>
 
-      <!-- Progreso Stikers -->
-      <div class="progress-container">
+      <!-- Progreso Stikers: solo si hay sorteo -->
+      <div *ngIf="principal" class="progress-container">
         <p class="progress-text">
           <strong>{{ soldStikers }}</strong> / {{ totalStikers }} stikers vendidos
         </p>

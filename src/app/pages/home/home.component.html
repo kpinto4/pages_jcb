@@ -1,4 +1,22 @@
 <app-hero-rifa></app-hero-rifa>
-<app-premios></app-premios>
+
+<!-- Cuadrícula de 10 anticipados del sorteo actual (números revelados cuando ya hay ganador) -->
+<section class="anticipados-grid-section" *ngIf="anticipadosActuales.length > 0">
+  <h2>Números bendecidos del sorteo actual</h2>
+  <p class="grid-desc">Cada caja representa un premio anticipado. Cuando un cliente gana, se revela el número.</p>
+  <div class="anticipados-grid">
+    <div
+      *ngFor="let a of anticipadosActuales"
+      class="anticipado-box"
+      [class.revelado]="a.revelado"
+    >
+      <span class="numero" *ngIf="a.revelado">{{ a.numero_revelado }}</span>
+      <span class="pendiente" *ngIf="!a.revelado">?</span>
+      <small>{{ a.nombre }}</small>
+    </div>
+  </div>
+</section>
+
+<app-premios [mayoresRealizados]="mayoresRealizados" [loading]="loadingHome"></app-premios>
 <app-como-participar></app-como-participar>
 

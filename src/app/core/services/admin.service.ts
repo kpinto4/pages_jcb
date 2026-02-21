@@ -29,6 +29,8 @@ export interface Sorteo {
   tipo: string;
   estado: string;
   premio_descripcion: string | null;
+  imagen_url?: string | null;
+  sorteo_mayor_id?: number | null;
   numero_ganador_a: string | null;
   numero_ganador_b: string | null;
   numeros_beneficiados?: string | null;
@@ -97,6 +99,14 @@ export class AdminService {
     );
   }
 
+  /** Revisa de nuevo todas las órdenes pagadas y registra coincidencias con números bendecidos que no se hubieran detectado. */
+  revisarBeneficios(): Observable<{ ok: boolean; ordenesRevisadas: number; nuevasCoincidencias: number } | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.post<{ ok: boolean; ordenesRevisadas: number; nuevasCoincidencias: number }>(`${this.apiUrl}/api/admin/revisar-beneficios`, {}).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
   confirmCashOrder(id: string): Observable<AdminOrder | null> {
     if (!this.apiUrl) return of(null);
     return this.http.post<AdminOrder>(`${this.apiUrl}/api/admin/orders/${id}/confirm-cash`, {}).pipe(
@@ -111,9 +121,25 @@ export class AdminService {
     );
   }
 
-  createSorteo(body: { nombre: string; fecha: string; descripcion?: string; tipo?: string; premio_descripcion?: string }): Observable<Sorteo | null> {
+  createSorteo(body: { nombre: string; fecha: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string }): Observable<Sorteo | null> {
     if (!this.apiUrl) return of(null);
     return this.http.post<Sorteo>(`${this.apiUrl}/api/admin/sorteos`, body).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  updateSorteo(id: number, body: Partial<{ nombre: string; fecha: string; descripcion: string; premio_descripcion: string; imagen_url: string; numeros_beneficiados: string }>): Observable<Sorteo | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.patch<Sorteo>(`${this.apiUrl}/api/admin/sorteos/${id}`, body).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  uploadImage(file: File): Observable<{ url: string } | null> {
+    if (!this.apiUrl) return of(null);
+    const formData = new FormData();
+    formData.append('image', file);
+    return this.http.post<{ url: string }>(`${this.apiUrl}/api/admin/upload-image`, formData).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );
   }
@@ -132,10 +158,36 @@ export class AdminService {
     );
   }
 
-  realizarSorteo(id: number): Observable<SorteoGanadorResponse | null> {
+  resetStikerSlots(): Observable<{ ok: boolean; total: number } | null> {
     if (!this.apiUrl) return of(null);
-    return this.http.post<SorteoGanadorResponse>(`${this.apiUrl}/api/admin/sorteos/${id}/realizar`, {}).pipe(
+    return this.http.post<{ ok: boolean; total: number }>(`${this.apiUrl}/api/admin/reset-stiker-slots`, {}).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  /** Consultar datos del ganador por número de 4 cifras (el que da la lotería local). */
+  consultarGanador(
+    id: number,
+    numero: string
+  ): Observable<{ ganador: SorteoGanadorResponse['ganador']; stiker_ganador: string | null; sorteo: { id: number; nombre: string; fecha: string }; existe_sin_pagar?: boolean } | null> {
+    if (!this.apiUrl) return of(null);
+    const params: Record<string, string> = { numero: numero.replace(/\D/g, '').slice(0, 4) };
+    return this.http
+      .get<{ ganador: SorteoGanadorResponse['ganador']; stiker_ganador: string | null; sorteo: { id: number; nombre: string; fecha: string }; existe_sin_pagar?: boolean }>(
+        `${this.apiUrl}/api/admin/sorteos/${id}/consultar-ganador`,
+        { params }
+      )
+      .pipe(
+        catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+      );
+  }
+
+  realizarSorteo(id: number, numero_ganador: string): Observable<SorteoGanadorResponse | null> {
+    if (!this.apiUrl) return of(null);
+    return this.http.post<SorteoGanadorResponse>(`${this.apiUrl}/api/admin/sorteos/${id}/realizar`, {
+      numero_ganador: numero_ganador.replace(/\D/g, '').slice(0, 4)
+    }).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
   }
 }

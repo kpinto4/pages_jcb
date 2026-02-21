@@ -138,6 +138,8 @@ export async function initDb() {
         tipo TEXT NOT NULL DEFAULT 'anticipado',
         estado TEXT NOT NULL DEFAULT 'programado',
         premio_descripcion TEXT,
+        imagen_url TEXT,
+        sorteo_mayor_id INTEGER,
         numero_ganador_a TEXT,
         numero_ganador_b TEXT,
         ganador_nombre TEXT,
@@ -145,7 +147,8 @@ export async function initDb() {
         ganador_email TEXT,
         ganador_telefono TEXT,
         numeros_beneficiados TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (sorteo_mayor_id) REFERENCES sorteos(id)
       );
 
       CREATE TABLE IF NOT EXISTS config (
@@ -178,26 +181,26 @@ export async function initDb() {
     `);
   }
 
-  function seedStikerSlots(count = 300) {
+  function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  /** Genera count pares (5000) usando cada número 0000-9999 exactamente una vez; en cada par los dos números son distintos. */
+  function seedStikerSlots(count = 5000) {
     const existing = db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
     if (existing.n > 0) return;
 
     const insert = db.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
-    const random4 = () => Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    const seen = new Set();
-
+    const nums = Array.from({ length: 10000 }, (_, i) => i.toString().padStart(4, '0'));
+    shuffleArray(nums);
     for (let i = 0; i < count; i++) {
-      let a = random4();
-      let b = random4();
-      const key = `${a}-${b}`;
-      if (seen.has(key)) {
-        i--;
-        continue;
-      }
-      seen.add(key);
-      insert.run(a, b);
+      insert.run(nums[2 * i], nums[2 * i + 1]);
     }
-    console.log(`Se crearon ${count} stiker_slots.`);
+    console.log(`Se crearon ${count} stiker_slots (cada número 0000-9999 aparece una sola vez).`);
   }
 
   function seedSorteos() {
@@ -220,9 +223,9 @@ export async function initDb() {
     db.prepare(`
       INSERT INTO config (key, value) VALUES
       ('precio_stiker_cents', '5000'),
-      ('currency', 'usd')
+      ('currency', 'cop')
     `).run();
-    console.log('Se creó config inicial (precio stiker $50 USD).');
+    console.log('Se creó config inicial (moneda COP).');
   }
 
   function migrateSorteosPremio() {
@@ -238,6 +241,12 @@ export async function initDb() {
     try {
       const info = db.prepare('PRAGMA table_info(sorteos)').all();
       const have = (name) => info.some(c => c.name === name);
+      if (!have('premio_descripcion')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN premio_descripcion TEXT').run();
+      }
+      if (!have('imagen_url')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN imagen_url TEXT').run();
+      }
       if (!have('ganador_nombre')) {
         db.prepare('ALTER TABLE sorteos ADD COLUMN ganador_nombre TEXT').run();
       }
@@ -253,14 +262,27 @@ export async function initDb() {
       if (!have('numeros_beneficiados')) {
         db.prepare('ALTER TABLE sorteos ADD COLUMN numeros_beneficiados TEXT').run();
       }
-      console.log('Migración: columnas de ganador y numeros_beneficiados añadidas a sorteos (si no existían).');
+      if (!have('sorteo_mayor_id')) {
+        db.prepare('ALTER TABLE sorteos ADD COLUMN sorteo_mayor_id INTEGER').run();
+      }
+      console.log('Migración: columnas de ganador, numeros_beneficiados y sorteo_mayor_id añadidas a sorteos (si no existían).');
+    } catch (_) {}
+  }
+
+  function migrateOrdersSorteoMayor() {
+    try {
+      const info = db.prepare('PRAGMA table_info(orders)').all();
+      if (info.some(c => c.name === 'sorteo_mayor_id')) return;
+      db.prepare('ALTER TABLE orders ADD COLUMN sorteo_mayor_id INTEGER').run();
+      console.log('Migración: columna sorteo_mayor_id añadida a orders.');
     } catch (_) {}
   }
 
   initSchema();
   migrateSorteosPremio();
   migrateSorteosExtended();
-  seedStikerSlots(300);
+  migrateOrdersSorteoMayor();
+  seedStikerSlots(5000);
   seedSorteos();
   seedConfig();
   return db;

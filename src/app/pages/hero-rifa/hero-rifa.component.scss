@@ -48,6 +48,18 @@
       transform: translateY(-2px) scale(1.03);
       box-shadow: 0 14px 35px var(--accent-light);
     }
+
+    &.btn-comprar-disabled {
+      background: var(--surface);
+      color: var(--text-muted);
+      box-shadow: none;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+  }
+
+  .hero-proximamente {
+    color: var(--text);
   }
 
   .countdown {

@@ -26,7 +26,7 @@ export interface StikerFromApi {
   estado: 'libre' | 'ocupado';
 }
 
-export interface BoletaFromApi {
+export interface StikerCompradoFromApi {
   codigo: string;
   numero1: string;
   numero2: string;
@@ -119,7 +119,9 @@ export class PaymentService {
     if (!this.apiUrl) {
       return of({ stikers: [] });
     }
-    return this.http.get<{ stikers: StikerFromApi[] }>(`${this.apiUrl}/api/stikers`).pipe(
+    return this.http.get<{ stikers: StikerFromApi[] }>(`${this.apiUrl}/api/stikers`, {
+      params: { limit: '5000' }
+    }).pipe(
       catchError(() => of({ stikers: [] }))
     );
   }
@@ -135,16 +137,16 @@ export class PaymentService {
   }
 
   /**
-   * Boletas asociadas a una cédula (para Verificar boleta).
+   * Stikers asociados a una cédula (para Verificar stiker).
    */
-  getBoletas(cedula: string): Observable<{ boletas: BoletaFromApi[] }> {
+  getStikersPorCedula(cedula: string): Observable<{ stikers: StikerCompradoFromApi[] }> {
     if (!this.apiUrl) {
-      return of({ boletas: [] });
+      return of({ stikers: [] });
     }
-    return this.http.get<{ boletas: BoletaFromApi[] }>(`${this.apiUrl}/api/boletas`, {
+    return this.http.get<{ stikers: StikerCompradoFromApi[] }>(`${this.apiUrl}/api/verificar-stikers`, {
       params: { cedula: cedula.trim() }
     }).pipe(
-      catchError(() => of({ boletas: [] }))
+      catchError(() => of({ stikers: [] }))
     );
   }
 }

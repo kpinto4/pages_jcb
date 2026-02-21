@@ -9,7 +9,7 @@ Esta guía explica cómo está hecho el backend del **Juego de la Ciudad Bonita*
 El backend es un servidor **Node.js + Express** que:
 
 - Guarda todo en una base de datos **SQLite** (archivo `server/data.db`).
-- Ofrece APIs para: listar stikers, verificar boletas por cédula, crear pagos con Stripe y recibir webhooks.
+- Ofrece APIs para: listar stikers, verificar stikers por cédula, crear pagos con Stripe y recibir webhooks.
 - **Regla importante:** un stiker (par de números) está **vendido** cuando en la base de datos está vinculado a una orden y esa orden puede estar en estado **pending** (reservada, aún no pagó) o **paid** (ya pagó).
 
 ---
@@ -42,7 +42,7 @@ Una fila por compra: datos del comprador y estado del pago.
 |--------------------|-------------|
 | `id`               | UUID de la orden (ej. `a1b2c3d4-...`). |
 | `stripe_session_id`| ID de la sesión de Stripe (cuando existe). |
-| `cedula`           | Cédula del comprador (para verificar boletas). |
+| `cedula`           | Cédula del comprador (para verificar stikers). |
 | `nombre`           | Nombre del comprador. |
 | `email`            | Correo. |
 | `telefono`         | Teléfono (opcional). |
@@ -66,7 +66,7 @@ Cada fila es **un stiker dentro de una compra**: qué par de números pertenece 
 | `numero_a`| Primer número de ese stiker. |
 | `numero_b`| Segundo número. |
 
-Así, para una orden con 3 stikers hay 3 filas en `order_items` con el mismo `order_id`. Esto es lo que se usa para “qué números compró esta persona” y para mostrar las boletas al verificar por cédula.
+Así, para una orden con 3 stikers hay 3 filas en `order_items` con el mismo `order_id`. Esto es lo que se usa para “qué números compró esta persona” y para mostrar los stikers al verificar por cédula.
 
 ---
 
@@ -76,7 +76,7 @@ Resumen en tres ideas:
 
 1. **Catálogo:** `stiker_slots` tiene todos los pares (numero_a, numero_b). Si `order_id` es NULL → libre; si tiene valor → **ese número ya está comprado (o reservado)**.
 2. **Quién compró qué:** En `orders` está la persona (cedula, nombre, email…) y en `order_items` están los pares (numero_a, numero_b) de esa orden.
-3. **Estado del pago:** En `orders.status`: `pending` = reservado, `paid` = ya pagó. Al verificar boletas se usa este campo para mostrar “Pagado” o “Pendiente”.
+3. **Estado del pago:** En `orders.status`: `pending` = reservado, `paid` = ya pagó. Al verificar stikers se usa este campo para mostrar “Pagado” o “Pendiente”.
 
 Flujo paso a paso:
 
@@ -102,21 +102,21 @@ Desde ese momento, esos stikers siguen con `order_id` rellenado y la orden en `p
 
 ---
 
-## 4. Cómo “Verificar boleta” sabe qué compró una persona
+## 4. Cómo “Verificar stiker” sabe qué compró una persona
 
-La pantalla **Verificar boleta** pide la **cédula** y llama a:
+La pantalla **Verificar stiker** pide la **cédula** y llama a:
 
 ```
-GET /api/boletas?cedula=1234567890
+GET /api/verificar-stikers?cedula=1234567890
 ```
 
 En el backend se hace:
 
 1. Buscar en `orders` todas las órdenes con esa `cedula`.
 2. Para cada orden, buscar en `order_items` los pares (numero_a, numero_b).
-3. Devolver una “boleta” por cada ítem: código (derivado del order id), numero1/numero2, y si está **pagado** según `orders.status === 'paid'`.
+3. Devolver una “stiker” por cada ítem: código (derivado del order id), numero1/numero2, y si está **pagado** según `orders.status === 'paid'`.
 
-Así, los números que ves en Verificar boleta son exactamente los guardados en `order_items` para las órdenes de esa cédula; el estado “Pagado”/“Pendiente” viene de cómo está guardado el pago en `orders`.
+Así, los números que ves en Verificar stiker son exactamente los guardados en `order_items` para las órdenes de esa cédula; el estado “Pagado”/“Pendiente” viene de cómo está guardado el pago en `orders`.
 
 ---
 
@@ -141,7 +141,7 @@ id  numero_a  numero_b  order_id    id (UUID)  cedula  status     order_id  nume
 | Archivo      | Qué hace |
 |-------------|----------|
 | `server/db.js`   | Crea la base SQLite, las tablas (`orders`, `order_items`, `stiker_slots`) y el seed de stikers. |
-| `server/index.js`| Express: rutas `/api/stikers`, `/api/boletas`, `/api/create-checkout-session`, `/api/session/...`, `/api/webhooks/stripe`, etc. |
+| `server/index.js`| Express: rutas `/api/stikers`, `/api/verificar-stikers`, `/api/create-checkout-session`, `/api/session/...`, `/api/webhooks/stripe`, etc. |
 | `server/data.db` | Base SQLite (se crea al iniciar; no subir a git). |
 
 Con esta guía tienes claro cómo el backend guarda y usa los números de las personas que ya compraron: por la relación entre `stiker_slots.order_id`, `orders` y `order_items`.

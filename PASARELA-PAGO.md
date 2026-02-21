@@ -138,7 +138,7 @@ El backend usa **SQLite** (`server/data.db`) para órdenes, ítems y stikers. Al
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET    | `/api/stikers`                | Lista stikers con `numeroA`, `numeroB`, `estado` (libre/ocupado). Opcional: `?limit=200`. |
-| GET    | `/api/boletas?cedula=XXX`     | Boletas asociadas a una cédula (para Verificar boleta). |
+| GET    | `/api/verificar-stikers?cedula=XXX`     | Stikers asociados a una cédula (para Verificar stiker). |
 | POST   | `/api/create-checkout-session` | Crea sesión Stripe; body incluye `selectedStikers` (array de `{ numeroA, numeroB }`), reserva stikers y crea orden en estado `pending`. Devuelve `{ url, sessionId }`. |
 | GET    | `/api/session/:sessionId`     | Detalles de una sesión pagada (para la página de éxito). |
 | POST   | `/api/webhooks/stripe`        | Webhook Stripe: al recibir `checkout.session.completed` marca la orden como `paid`. Configura `STRIPE_WEBHOOK_SECRET` en `.env`. |

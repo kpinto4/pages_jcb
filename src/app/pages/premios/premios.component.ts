@@ -1,19 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { PaymentService } from '../../core/services/payment.service';
-
-interface SorteoItem {
-  id: number;
-  nombre: string;
-  fecha: string;
-  descripcion: string | null;
-  tipo: string;
-  estado: string;
-  premio_descripcion?: string | null;
-  numero_ganador_a: string | null;
-  numero_ganador_b: string | null;
-  numeros_beneficiados?: string | null;
-}
+import { Sorteo } from '../../core/services/sorteos.service';
 
 @Component({
   selector: 'app-premios',
@@ -22,23 +9,12 @@ interface SorteoItem {
   templateUrl: './premios.component.html',
   styleUrls: ['./premios.component.scss']
 })
-export class PremiosComponent implements OnInit {
+export class PremiosComponent {
+  @Input() mayoresRealizados: (Sorteo & { ganador_nombre?: string })[] = [];
+  @Input() loading = false;
 
-  sorteos: SorteoItem[] = [];
-  loading = true;
-
-  constructor(private paymentService: PaymentService) {}
-
-  ngOnInit(): void {
-    this.paymentService.getSorteos().subscribe({
-      next: (res) => {
-        this.sorteos = res.sorteos || [];
-        this.loading = false;
-      },
-      error: () => {
-        this.loading = false;
-      }
-    });
+  get sorteos(): (Sorteo & { ganador_nombre?: string })[] {
+    return this.mayoresRealizados || [];
   }
 
   formatDate(fecha: string): string {

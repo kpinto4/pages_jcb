@@ -6,7 +6,7 @@ Guía del proyecto **Juego de la Ciudad Bonita**: qué hace cada parte y cómo s
 
 ## 1. Resumen del proyecto
 
-- **Frontend:** aplicación Angular (SPA) que muestra la web del juego: inicio, premios, compra de stikers, verificación de boletas y panel de administración.
+- **Frontend:** aplicación Angular (SPA) que muestra la web del juego: inicio, premios, compra de stikers, verificación de stikers y panel de administración.
 - **Backend:** servidor Node.js + Express que guarda datos en SQLite, crea pagos con Stripe y protege las rutas de admin con login (JWT).
 - **Comunicación:** el frontend llama al backend por HTTP (la URL se configura en `src/environments/environment.ts`; en desarrollo suele ser `http://localhost:3000`).
 
@@ -43,7 +43,7 @@ Al arrancar el servidor se ejecutan migraciones y seeds (por ejemplo 300 stikers
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/stikers` | Lista stikers con numeroA, numeroB, estado (libre/ocupado). |
-| GET | `/api/boletas?cedula=XXX` | Boletas asociadas a una cédula. |
+| GET | `/api/verificar-stikers?cedula=XXX` | Stikers asociados a una cédula. |
 | GET | `/api/config` | Precio por stiker (centavos) y moneda para la tienda. |
 | GET | `/api/sorteos` | Lista de sorteos (para la sección Premios). |
 | GET | `/api/sorteos/:id` | Detalle de un sorteo. |
@@ -70,14 +70,14 @@ El middleware de admin comprueba el JWT en todas las rutas bajo `/api/admin` exc
 ### 2.4 Flujos importantes en el backend
 
 - **Compra:** El frontend envía a `POST /api/create-checkout-session` los stikers elegidos y datos del cliente. El backend comprueba que esos stikers estén libres, crea la orden (pending), inserta en `order_items`, actualiza `stiker_slots` con el `order_id`, crea la sesión en Stripe y devuelve la URL. Cuando el usuario paga, Stripe redirige a la web y opcionalmente llama al webhook; el webhook pone la orden en `paid`.
-- **Verificar boleta:** `GET /api/boletas?cedula=XXX` busca órdenes por cédula y para cada una los ítems en `order_items`; devuelve lista de boletas con codigo, numero1, numero2, pagado (según status de la orden).
+- **Verificar stiker:** `GET /api/verificar-stikers?cedula=XXX` busca órdenes por cédula y para cada una los ítems en `order_items`; devuelve lista de stikers con codigo, numero1, numero2, pagado (según status de la orden).
 - **Sorteos:** Los sorteos se listan con `GET /api/sorteos`. Al “realizar” un sorteo (`POST .../realizar`) se elige al azar un ítem entre los de órdenes pagadas y se guarda como ganador en ese sorteo.
 
 ### 2.5 Archivos del backend
 
 | Archivo | Función |
 |---------|---------|
-| `server/index.js` | Express: CORS, login, middleware admin, todas las rutas (stikers, boletas, config, checkout, session, webhook, admin). |
+| `server/index.js` | Express: CORS, login, middleware admin, todas las rutas (stikers, verificar-stikers, config, checkout, session, webhook, admin). |
 | `server/db.js` | Conexión SQLite, creación de tablas, migraciones, seeds (stikers, sorteos, config). |
 | `server/.env` | Variables: PORT, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ADMIN_PASSWORD, JWT_SECRET, SQLITE_PATH. |
 | `server/package.json` | Dependencias: express, cors, stripe, better-sqlite3, jsonwebtoken, dotenv. |
@@ -99,16 +99,16 @@ El middleware de admin comprueba el JWT en todas las rutas bajo `/api/admin` exc
 src/app/
 ├── app.component.ts/html     → Shell: navbar + <router-outlet> + footer
 ├── app.config.ts              → provideRouter, provideHttpClient, interceptor admin
-├── app.routes.ts               → Rutas: '', 'comprar-stikers', 'verificar-boleta', 'admin'
+├── app.routes.ts               → Rutas: '', 'comprar-stikers', 'verificar-stiker', 'admin'
 ├── core/
 │   ├── interceptors/
 │   │   └── admin-auth.interceptor.ts  → Añade Bearer token a peticiones /api/admin; en 401 hace logout
 │   └── services/
-│       ├── payment.service.ts  → getConfig, getStikers, getBoletas, getSorteos, createCheckoutSession, getSessionDetails, healthCheck
+│       ├── payment.service.ts  → getConfig, getStikers, getStikersPorCedula, getSorteos, createCheckoutSession, getSessionDetails, healthCheck
 │       ├── admin.service.ts     → getStats, getOrders, getSorteos, createSorteo, realizarSorteo, getConfig, updateConfig
 │       └── admin-auth.service.ts → login(password), logout(), getToken(), isLoggedIn(); token en sessionStorage
 ├── shared/
-│   ├── navbar/                 → Logo, enlaces (Inicio, Verificar boleta, Comprar stiker), menú hamburguesa en móvil
+│   ├── navbar/                 → Logo, enlaces (Inicio, Verificar stiker, Comprar stiker), menú hamburguesa en móvil
 │   └── footer/                 → Logo, enlaces, contacto, copyright
 └── pages/
     ├── home/                   → Hero (contador, progreso, botón comprar), Premios, Cómo participar
@@ -116,7 +116,7 @@ src/app/
     ├── premios/                → Lista de sorteos desde GET /api/sorteos (o tarjetas estáticas si no hay backend)
     ├── como-participar/        → Pasos: elegir stikers, pagar, esperar sorteo
     ├── comprar-stikers/        → Flujo en 4 pasos: selección, datos, pago (Stripe o simulación), confirmación
-    ├── verificar-boleta/       → Formulario cédula → GET /api/boletas → lista de boletas
+    ├── verificar-boleta/       → Formulario cédula → GET /api/verificar-stikers → lista de stikers
     └── admin/                  → Login (contraseña) y panel: Estadísticas, Ventas, Sorteos, Configuración
 ```
 
@@ -126,7 +126,7 @@ src/app/
 |------|------------|-------------|
 | `/` | HomeComponent | Inicio: hero, premios, cómo participar. |
 | `/comprar-stikers` | ComprarStikersComponent | Compra de stikers en 4 pasos; redirección a Stripe o simulación. |
-| `/verificar-boleta` | VerificarBoletaComponent | Consulta de boletas por cédula. |
+| `/verificar-stiker` | VerificarStikerComponent | Consulta de stikers por cédula. |
 | `/admin` | AdminComponent | Login y panel admin (stats, ventas, sorteos, config). |
 
 Todas las rutas comparten el mismo layout: navbar arriba y footer abajo (definidos en `app.component.html`).
@@ -134,7 +134,7 @@ Todas las rutas comparten el mismo layout: navbar arriba y footer abajo (definid
 ### 3.4 Servicios y uso del backend
 
 - **PaymentService** (`core/services/payment.service.ts`):  
-  Usa `environment.paymentApiUrl` para todas las llamadas “públicas”: `getConfig()`, `getStikers()`, `getBoletas()`, `getSorteos()`, `createCheckoutSession()`, `getSessionDetails()`, `healthCheck()`. No envían token.
+  Usa `environment.paymentApiUrl` para todas las llamadas “públicas”: `getConfig()`, `getStikers()`, `getStikersPorCedula()`, `getSorteos()`, `createCheckoutSession()`, `getSessionDetails()`, `healthCheck()`. No envían token.
 
 - **AdminService** (`core/services/admin.service.ts`):  
   Llama solo rutas bajo `/api/admin` (config, orders, stats, sorteos CRUD, realizar). El **interceptor** añade automáticamente `Authorization: Bearer <token>` a estas peticiones. Si la respuesta es 401, el interceptor llama a `AdminAuthService.logout()`.
@@ -151,11 +151,11 @@ Todas las rutas comparten el mismo layout: navbar arriba y footer abajo (definid
 3. En “Pagar con tarjeta (Stripe)” se llama a `createCheckoutSession()` con total, email, selectedStikers y metadata; el backend devuelve la URL de Stripe y el frontend hace `window.location.href = url`.
 4. Tras pagar, Stripe redirige a `/comprar-stikers?success=true&session_id=...`. El componente lee los query params, llama a `getSessionDetails(sessionId)` y muestra la pantalla de éxito. Si el usuario cancela, vuelve con `?canceled=true` y se muestra el mensaje correspondiente.
 
-**Verificar boleta**
+**Verificar stiker**
 
 1. El usuario escribe la cédula y envía el formulario.
-2. Se llama a `getBoletas(cedula)`.
-3. Se muestran las boletas (código, números, Pagado/Pendiente).
+2. Se llama a `getStikersPorCedula(cedula)`.
+3. Se muestran los stikers (código, números, Pagado/Pendiente).
 
 **Admin**
 

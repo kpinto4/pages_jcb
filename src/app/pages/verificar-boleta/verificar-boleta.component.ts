@@ -1,25 +1,25 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { PaymentService, BoletaFromApi } from '../../core/services/payment.service';
+import { PaymentService, StikerCompradoFromApi } from '../../core/services/payment.service';
 
 @Component({
-  selector: 'app-verificar-boleta',
+  selector: 'app-verificar-stiker',
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './verificar-boleta.component.html',
   styleUrls: ['./verificar-boleta.component.scss']
 })
-export class VerificarBoletaComponent {
+export class VerificarStikerComponent {
 
   cedula = '';
-  boletas: BoletaFromApi[] = [];
+  stikers: StikerCompradoFromApi[] = [];
   buscando = false;
   error = '';
 
   constructor(private paymentService: PaymentService) {}
 
-  buscarBoletas(event: Event) {
+  buscarStikers(event: Event) {
     event.preventDefault();
     const ced = this.cedula.trim();
     if (!ced) {
@@ -28,12 +28,12 @@ export class VerificarBoletaComponent {
     }
     this.error = '';
     this.buscando = true;
-    this.paymentService.getBoletas(ced).subscribe({
+    this.paymentService.getStikersPorCedula(ced).subscribe({
       next: (res) => {
-        this.boletas = res.boletas || [];
+        this.stikers = res.stikers || [];
         this.buscando = false;
-        if (this.boletas.length === 0) {
-          this.error = 'No se encontraron boletas para esta cédula.';
+        if (this.stikers.length === 0) {
+          this.error = 'No se encontraron stikers para esta cédula.';
         }
       },
       error: () => {

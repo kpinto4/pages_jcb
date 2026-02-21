@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { PaymentService, SessionDetails } from '../../core/services/payment.service';
+import { SorteosService } from '../../core/services/sorteos.service';
 
 interface Stiker {
   numeroA: string;
@@ -36,6 +37,9 @@ export class ComprarStikersComponent implements OnInit {
   busqueda = '';
   cantidadAleatoria = 1;
 
+  readonly PAGE_SIZE = 100;
+  currentPage = 1;
+
   stikers: Stiker[] = [];
   cargandoStikers = true;
 
@@ -56,6 +60,7 @@ export class ComprarStikersComponent implements OnInit {
 
   constructor(
     private paymentService: PaymentService,
+    private sorteosService: SorteosService,
     private route: ActivatedRoute,
     private router: Router
   ) {}
@@ -69,21 +74,35 @@ export class ComprarStikersComponent implements OnInit {
     });
 
     this.cargandoStikers = true;
-    this.paymentService.getStikers().subscribe({
-      next: (res) => {
-        if (res.stikers && res.stikers.length > 0) {
-          this.stikers = res.stikers.map(s => ({
-            numeroA: s.numeroA,
-            numeroB: s.numeroB,
-            estado: s.estado as 'libre' | 'ocupado'
-          }));
-        } else {
-          this.generarStikers();
+    // Solo cargar stikers si hay sorteo activo (misma fuente que el hero)
+    this.sorteosService.getHomeData().subscribe({
+      next: (data) => {
+        if (!data?.principal) {
+          this.stikers = [];
+          this.cargandoStikers = false;
+          return;
         }
-        this.cargandoStikers = false;
+        this.paymentService.getStikers().subscribe({
+          next: (res) => {
+            if (res.stikers && res.stikers.length > 0) {
+              this.stikers = res.stikers.map(s => ({
+                numeroA: s.numeroA,
+                numeroB: s.numeroB,
+                estado: s.estado as 'libre' | 'ocupado'
+              }));
+            } else {
+              this.stikers = [];
+            }
+            this.cargandoStikers = false;
+          },
+          error: () => {
+            this.stikers = [];
+            this.cargandoStikers = false;
+          }
+        });
       },
       error: () => {
-        this.generarStikers();
+        this.stikers = [];
         this.cargandoStikers = false;
       }
     });
@@ -167,11 +186,53 @@ export class ComprarStikersComponent implements OnInit {
   }
 
   get stikersFiltrados(): Stiker[] {
-    if (!this.busqueda) return this.stikers;
-    return this.stikers.filter(s =>
-      s.numeroA.includes(this.busqueda) ||
-      s.numeroB.includes(this.busqueda)
-    );
+    if (!this.busqueda.trim()) return this.stikers;
+    const q = this.busqueda.trim();
+    return this.stikers.filter(s => {
+      const a = s.numeroA;
+      const b = s.numeroB;
+      // Coincidencia exacta en uno de los dos números (ej. buscar 1983 → 1983-xxxx o xxxx-1983)
+      if (a === q || b === q) return true;
+      // Coincidencia parcial dentro de cada número de 4 cifras
+      if (a.includes(q) || b.includes(q)) return true;
+      return false;
+    });
+  }
+
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.stikersFiltrados.length / this.PAGE_SIZE));
+  }
+
+  get stikersEnPagina(): Stiker[] {
+    const f = this.stikersFiltrados;
+    const start = (this.currentPage - 1) * this.PAGE_SIZE;
+    return f.slice(start, start + this.PAGE_SIZE);
+  }
+
+  get paginasVisibles(): number[] {
+    const total = this.totalPages;
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const p = this.currentPage;
+    let from = Math.max(1, p - 3);
+    let to = Math.min(total, from + 6);
+    if (to - from < 6) from = Math.max(1, to - 6);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }
+
+  onBusquedaChange(): void {
+    this.currentPage = 1;
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) this.currentPage = page;
+  }
+
+  siguientePagina(): void {
+    if (this.currentPage < this.totalPages) this.currentPage++;
+  }
+
+  irAUltima(): void {
+    this.currentPage = this.totalPages;
   }
 
   get seleccionados(): Stiker[] {

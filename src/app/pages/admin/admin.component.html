@@ -31,19 +31,19 @@
   </div>
 
   <nav class="tabs">
-    <button type="button" class="tab" [class.active]="tab === 'stats'" (click)="tab = 'stats'">
+    <button type="button" class="tab" [class.active]="tab === 'stats'" (click)="selectTab('stats')">
       Estadísticas
     </button>
-    <button type="button" class="tab" [class.active]="tab === 'orders'" (click)="tab = 'orders'">
+    <button type="button" class="tab" [class.active]="tab === 'orders'" (click)="selectTab('orders')">
       Ventas
     </button>
-    <button type="button" class="tab" [class.active]="tab === 'sorteos'" (click)="tab = 'sorteos'">
+    <button type="button" class="tab" [class.active]="tab === 'sorteos'" (click)="selectTab('sorteos')">
       Sorteos
     </button>
-    <button type="button" class="tab" [class.active]="tab === 'beneficios'" (click)="tab = 'beneficios'">
+    <button type="button" class="tab" [class.active]="tab === 'beneficios'" (click)="selectTab('beneficios')">
       Números beneficiados
     </button>
-    <button type="button" class="tab" [class.active]="tab === 'config'" (click)="tab = 'config'">
+    <button type="button" class="tab" [class.active]="tab === 'config'" (click)="selectTab('config')">
       Configuración
     </button>
   </nav>
@@ -120,59 +120,137 @@
     <h2>Sorteos</h2>
 
     <div class="sorteo-form">
-      <h3>Crear nuevo sorteo</h3>
+      <h3>Crear nuevo Premio Mayor</h3>
+      <p class="muted">Se creará el premio mayor y 10 anticipados de $500.000 COP (editables después).</p>
       <div class="form-row">
-        <input type="text" placeholder="Nombre (ej. Premio Anticipado #4)" [(ngModel)]="nuevoSorteo.nombre">
+        <input type="text" placeholder="Nombre (ej. Premio Mayor 2026)" [(ngModel)]="nuevoSorteo.nombre">
         <input type="date" [(ngModel)]="nuevoSorteo.fecha">
       </div>
       <div class="form-row">
-        <input type="text" placeholder="Premio (ej. Bono $100.000, Moto 0 KM)" [(ngModel)]="nuevoSorteo.premio_descripcion">
-        <select [(ngModel)]="nuevoSorteo.tipo">
-          <option value="anticipado">Anticipado</option>
-          <option value="mayor">Premio Mayor</option>
-        </select>
+        <input type="text" placeholder="Premio (ej. Moto 0 KM, Bono $500.000 COP)" [(ngModel)]="nuevoSorteo.premio_descripcion">
+      </div>
+      <div class="form-row">
+        <label>Imagen del premio (para el hero)</label>
+        <div class="imagen-opciones">
+          <input type="url" placeholder="URL de la imagen" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
+          <span>o</span>
+          <input type="file" accept="image/*" (change)="onImagenFileChange($event)">
+          <span *ngIf="imagenFile" class="file-name">{{ imagenFile.name }}</span>
+        </div>
       </div>
       <div class="form-row">
         <input type="text" placeholder="Descripción (opcional)" [(ngModel)]="nuevoSorteo.descripcion">
       </div>
-      <div class="form-row">
-        <textarea
-          rows="2"
-          placeholder="10 números beneficiados (ej: 1234-5678, 0001-9999, ...)"
-          [(ngModel)]="nuevoSorteo.numeros_beneficiados"
-        ></textarea>
-      </div>
       <button type="button" class="btn-primary" [disabled]="guardandoSorteo" (click)="crearSorteo()">
-        {{ guardandoSorteo ? 'Guardando...' : 'Crear sorteo' }}
+        {{ guardandoSorteo ? 'Guardando...' : 'Crear Premio Mayor' }}
       </button>
     </div>
 
     <h3>Listado de sorteos</h3>
+
+    <!-- Sorteos activos (programados) primero -->
+    <h4 class="sorteos-section-title">Sorteos activos</h4>
     <div class="sorteos-list">
-      <div *ngFor="let s of sorteos" class="sorteo-card" [class.realizado]="s.estado === 'realizado'">
-        <div class="sorteo-info">
+      <div *ngFor="let s of sorteosActivos" class="sorteo-card" [class.anticipado]="s.sorteo_mayor_id">
+        <div class="sorteo-info" *ngIf="editSorteoId !== s.id">
           <strong>{{ s.nombre }}</strong>
           <span class="sorteo-fecha">{{ formatDate(s.fecha) }}</span>
           <span class="sorteo-tipo">{{ s.tipo }}</span>
           <span *ngIf="s.premio_descripcion" class="sorteo-premio">{{ s.premio_descripcion }}</span>
-          <span class="badge" [class.realizado]="s.estado === 'realizado'">{{ s.estado }}</span>
-          <p *ngIf="s.estado === 'realizado' && s.numero_ganador_a" class="ganador">
-            Ganador: {{ s.numero_ganador_a }} - {{ s.numero_ganador_b }}
+          <span class="badge">{{ s.estado }}</span>
+          <p *ngIf="s.tipo === 'anticipado' && s.numeros_beneficiados" class="numeros-beneficiados">
+            Número bendecido: <strong>{{ s.numeros_beneficiados }}</strong>
           </p>
-          <p *ngIf="s.estado === 'realizado' && !s.numero_ganador_a" class="ganador">Sin números vendidos al realizar.</p>
         </div>
-        <button
-          *ngIf="s.estado !== 'realizado'"
-          type="button"
-          class="btn-realizar"
-          [disabled]="realizandoId === s.id"
-          (click)="realizarSorteo(s)"
-        >
-          {{ realizandoId === s.id ? 'Realizando...' : 'Realizar sorteo' }}
-        </button>
+        <div class="edit-form" *ngIf="editSorteoId === s.id">
+          <div class="form-row">
+            <input type="text" placeholder="Nombre" [(ngModel)]="editForm.nombre">
+            <input type="date" [(ngModel)]="editForm.fecha">
+          </div>
+          <div class="form-row">
+            <input type="text" placeholder="Premio" [(ngModel)]="editForm.premio_descripcion">
+          </div>
+          <div class="form-row" *ngIf="s.tipo === 'anticipado'">
+            <input type="text" placeholder="Número bendecido (ej: 1234 o 1234-5678)" [(ngModel)]="editForm.numeros_beneficiados">
+          </div>
+          <div class="form-row" *ngIf="s.tipo === 'mayor'">
+            <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn-primary" [disabled]="guardandoEditId === s.id" (click)="guardarEdicionSorteo()">
+              {{ guardandoEditId === s.id ? 'Guardando...' : 'Guardar' }}
+            </button>
+            <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
+          </div>
+        </div>
+        <div class="sorteo-actions">
+          <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
+          <button
+            *ngIf="(s.tipo || '').toLowerCase() === 'mayor'"
+            type="button"
+            class="btn-realizar"
+            (click)="abrirRealizarSorteo(s); $event.stopPropagation()"
+          >
+            Realizar sorteo
+          </button>
+        </div>
       </div>
     </div>
-    <p *ngIf="sorteos.length === 0" class="muted">No hay sorteos. Crea uno arriba.</p>
+    <p *ngIf="sorteosActivos.length === 0" class="muted">No hay sorteos activos.</p>
+
+    <!-- Sorteos terminados: un ítem por campaña (premio mayor + número ganador + números bendecidos) -->
+    <h4 class="sorteos-section-title">Sorteos terminados</h4>
+    <div class="sorteos-list sorteos-terminados">
+      <div *ngFor="let grupo of terminadosAgrupados" class="sorteo-card sorteo-card-terminado">
+        <div class="sorteo-info">
+          <strong>{{ grupo.mayor.nombre }}</strong>
+          <span class="sorteo-fecha">{{ formatDate(grupo.mayor.fecha) }}</span>
+          <p class="ganador-block" *ngIf="grupo.mayor.numero_ganador_a">
+            <strong>Número ganador (premio mayor):</strong> {{ grupo.mayor.numero_ganador_a }} - {{ grupo.mayor.numero_ganador_b }}
+          </p>
+          <p class="bendecidos-block" *ngIf="grupo.anticipados.length > 0">
+            <strong>Números bendecidos:</strong>
+            <span class="bendecidos-list">
+              <ng-container *ngFor="let a of grupo.anticipados; let last = last">
+                {{ a.numeros_beneficiados || ('Anticipado ' + a.id) }}<span *ngIf="!last">, </span>
+              </ng-container>
+            </span>
+          </p>
+        </div>
+      </div>
+    </div>
+    <p *ngIf="terminadosAgrupados.length === 0" class="muted">No hay sorteos terminados.</p>
+
+    <!-- Panel: ingresar número ganador y realizar sorteo -->
+    <div id="panel-realizar-sorteo" *ngIf="sorteoParaRealizar" class="panel realizar-panel">
+      <h3>Realizar sorteo: {{ sorteoParaRealizar.nombre }}</h3>
+      <p class="muted">El premio mayor se define con una lotería local. Ingresa el número ganador de 4 cifras y el sistema buscará el stiker que lo contiene y mostrará los datos del cliente.</p>
+      <div class="form-row">
+        <label>Número ganador (4 cifras, ej. 1234)</label>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="1234" [(ngModel)]="numeroGanadorInput" (keyup.enter)="verGanador()">
+      </div>
+      <div class="realizar-actions">
+        <button type="button" class="btn-secondary" (click)="verGanador()" [disabled]="consultandoGanador">
+          {{ consultandoGanador ? 'Buscando...' : 'Ver ganador' }}
+        </button>
+        <button type="button" class="btn-outline" (click)="cerrarRealizarSorteo()">Cancelar</button>
+      </div>
+      <p class="error-msg" *ngIf="errorRealizar">{{ errorRealizar }}</p>
+      <div *ngIf="ganadorConsultado" class="ganador-preview">
+        <p *ngIf="stikerGanadorConsultado" class="stiker-ganador"><strong>Stiker ganador:</strong> {{ stikerGanadorConsultado }}</p>
+        <p><strong>Cliente:</strong> {{ ganadorConsultado.nombre }}</p>
+        <p><strong>Cédula:</strong> {{ ganadorConsultado.cedula }}</p>
+        <p><strong>Email:</strong> {{ ganadorConsultado.email }}</p>
+        <p><strong>Teléfono:</strong> {{ ganadorConsultado.telefono || '-' }}</p>
+        <button type="button" class="btn-primary" [disabled]="realizandoId === sorteoParaRealizar.id" (click)="confirmarRealizarSorteo()">
+          {{ realizandoId === sorteoParaRealizar.id ? 'Realizando...' : 'Confirmar y dar por terminado' }}
+        </button>
+      </div>
+      <div *ngIf="showExtenderFecha" class="extender-fecha">
+        <button type="button" class="btn-secondary" (click)="extenderFechaSorteo()">Extender fecha del sorteo</button>
+        <span class="muted">Así podrás definir una nueva fecha para que más personas participen.</span>
+      </div>
+    </div>
 
     <!-- Detalle del cliente ganador tras realizar un sorteo -->
     <div *ngIf="ganadorActual" class="ganador-detalle">
@@ -202,12 +280,13 @@
     <p class="muted">Precio por stiker y moneda que verán los clientes en Comprar Stikers.</p>
     <div class="config-form">
       <div class="form-row">
-        <label>Precio por stiker (USD)</label>
-        <input type="number" step="0.01" min="0" [(ngModel)]="config.precioStikerDollars" placeholder="50">
+        <label>Precio por stiker</label>
+        <input type="number" step="1" min="0" [(ngModel)]="config.precioStikerDollars" [attr.placeholder]="config.currency === 'cop' ? '500000 (COP)' : '50 (USD)'">
       </div>
       <div class="form-row">
         <label>Moneda (Stripe)</label>
         <select [(ngModel)]="config.currency">
+          <option value="cop">COP (Colombia)</option>
           <option value="usd">USD</option>
           <option value="eur">EUR</option>
           <option value="mxn">MXN</option>
@@ -217,13 +296,25 @@
         {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}
       </button>
       <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
+
+      <div class="reset-stikers-box">
+        <h4>Stikers (5000 stikers = 10000 números)</h4>
+        <p class="muted">Si solo aparecen 300 stikers y el cliente no encuentra su número, reinicia para generar los 5000.</p>
+        <button type="button" class="btn-realizar" [disabled]="resettingStikers" (click)="reiniciarStikerSlots()">
+          {{ resettingStikers ? 'Reiniciando...' : 'Reiniciar stikers a 5000' }}
+        </button>
+      </div>
     </div>
   </section>
 
     <!-- BENEFICIOS ANTICIPADOS -->
     <section *ngIf="tab === 'beneficios'" class="panel">
-      <h2>Números beneficiados vendidos</h2>
-      <p class="muted">Listado de compras que coinciden con los números beneficiados definidos en sorteos anticipados.</p>
+      <h2>Números bendecidos vendidos (entregar premio anticipado)</h2>
+      <p class="muted">Cuando un cliente paga y su stiker coincide con un número bendecido, el ganador aparece aquí al instante (la lista se actualiza sola cada 10 s). Entregue el premio y notifique al cliente.</p>
+      <p class="muted">Si una compra coincide y no aparece, use «Revisar ventas de nuevo» para forzar la detección.</p>
+      <button type="button" class="btn-secondary" [disabled]="revisandoBeneficios" (click)="revisarBeneficios()">
+        {{ revisandoBeneficios ? 'Revisando...' : 'Revisar ventas de nuevo' }}
+      </button>
       <div class="table-wrap" *ngIf="beneficios.length > 0; else sinBeneficios">
         <table class="data-table">
           <thead>
