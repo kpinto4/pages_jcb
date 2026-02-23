@@ -14,6 +14,19 @@ import { randomUUID } from 'crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+/** Convierte BigInt y otros valores no serializables para res.json() (p. ej. Neon/pg devuelve id como BigInt). */
+function toJSONSafe(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return Number(obj);
+  if (Array.isArray(obj)) return obj.map(toJSONSafe);
+  if (typeof obj === 'object' && obj.constructor === Object) {
+    const out = {};
+    for (const k of Object.keys(obj)) out[k] = toJSONSafe(obj[k]);
+    return out;
+  }
+  return obj;
+}
+
 // En Vercel el filesystem es de solo lectura; usar /tmp para uploads
 let uploadsDir = path.join(__dirname, 'public', 'uploads');
 if (process.env.VERCEL) {
@@ -205,7 +218,7 @@ app.get('/api/stikers', async (req, res) => {
       LIMIT ?
     `).all(limit);
 
-    res.json({ stikers: rows });
+    res.json(toJSONSafe({ stikers: rows }));
   } catch (err) {
     console.error('Error GET /api/stikers:', err);
     res.status(500).json({ error: err.message });
@@ -243,7 +256,7 @@ app.get('/api/verificar-stikers', async (req, res) => {
       }
     }
 
-    res.json({ stikers });
+    res.json(toJSONSafe({ stikers }));
   } catch (err) {
     console.error('Error GET /api/verificar-stikers:', err);
     res.status(500).json({ error: err.message });
@@ -476,7 +489,7 @@ app.get('/api/admin/orders', async (req, res) => {
       ORDER BY o.created_at DESC
       LIMIT ?
     `).all(limit);
-    res.json({ orders: rows });
+    res.json(toJSONSafe({ orders: rows }));
   } catch (err) {
     console.error('Error GET /api/admin/orders:', err);
     res.status(500).json({ error: err.message });
@@ -504,7 +517,7 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
       WHERE o.id = ?
     `).get(id);
 
-    res.json(updated);
+    res.json(toJSONSafe(updated));
   } catch (err) {
     console.error('Error POST /api/admin/orders/:id/confirm-cash:', err);
     res.status(500).json({ error: err.message });
@@ -539,7 +552,7 @@ app.get('/api/admin/beneficios', async (req, res) => {
       ORDER BY b.created_at DESC
       LIMIT 100
     `).all();
-    res.json({ beneficios: rows });
+    res.json(toJSONSafe({ beneficios: rows }));
   } catch (err) {
     console.error('Error GET /api/admin/beneficios:', err);
     res.status(500).json({ error: err.message });
@@ -631,7 +644,7 @@ app.get('/api/sorteos', async (req, res) => {
       params.push(estado);
     }
     const rows = await db.prepare(sql).all(...params);
-    res.json({ sorteos: rows });
+    res.json(toJSONSafe({ sorteos: rows }));
   } catch (err) {
     console.error('Error GET /api/sorteos:', err);
     res.status(500).json({ error: err.message });
@@ -694,7 +707,7 @@ app.get('/api/sorteos/:id', async (req, res) => {
   try {
     const row = await db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Sorteo no encontrado' });
-    res.json(row);
+    res.json(toJSONSafe(row));
   } catch (err) {
     console.error('Error GET /api/sorteos/:id:', err);
     res.status(500).json({ error: err.message });
@@ -863,10 +876,11 @@ app.post('/api/admin/sorteos', async (req, res) => {
       return row;
     });
     const row = await runTx();
-    res.status(201).json(row);
+    res.status(201).json(toJSONSafe(row));
   } catch (err) {
     console.error('Error POST /api/admin/sorteos:', err);
-    res.status(500).json({ error: err.message });
+    const msg = err?.message || 'Error al crear el sorteo';
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -887,12 +901,12 @@ app.patch('/api/admin/sorteos/:id', async (req, res) => {
     if (premio_descripcion !== undefined) { updates.push('premio_descripcion = ?'); params.push(premio_descripcion); }
     if (imagen_url !== undefined) { updates.push('imagen_url = ?'); params.push(imagen_url); }
     if (numeros_beneficiados !== undefined) { updates.push('numeros_beneficiados = ?'); params.push((numeros_beneficiados || '').trim() || null); }
-    if (updates.length === 0) return res.json(current);
+    if (updates.length === 0) return res.json(toJSONSafe(current));
 
     params.push(id);
     await db.prepare(`UPDATE sorteos SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     const row = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
-    res.json(row);
+    res.json(toJSONSafe(row));
   } catch (err) {
     console.error('Error PATCH /api/admin/sorteos/:id:', err);
     res.status(500).json({ error: err.message });
@@ -1064,7 +1078,7 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
     }
 
     const updated = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
-    res.json({ sorteo: updated, ganador: resultado.ganador });
+    res.json(toJSONSafe({ sorteo: updated, ganador: resultado.ganador }));
   } catch (err) {
     console.error('Error POST /api/admin/sorteos/:id/realizar:', err);
     res.status(500).json({ error: err.message });

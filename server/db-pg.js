@@ -56,7 +56,8 @@ function runPg(sql, params) {
     runSql = sql.replace(/;\s*$/, '') + ' RETURNING id';
   }
   return query(runSql, params).then(res => {
-    const lastInsertRowid = isInsert && res.rows && res.rows[0] ? res.rows[0].id : 0;
+    const id = isInsert && res.rows && res.rows[0] ? res.rows[0].id : 0;
+    const lastInsertRowid = typeof id === 'bigint' ? Number(id) : (id || 0);
     return { lastInsertRowid };
   });
 }
