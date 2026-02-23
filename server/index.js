@@ -27,10 +27,12 @@ try {
 }
 
 let db;
+let dbInitError = null;
 try {
   db = await initDb();
 } catch (err) {
   console.error('DB init failed:', err.message);
+  dbInitError = err.message || String(err);
   db = null;
 }
 
@@ -69,7 +71,10 @@ app.use(express.json());
 // Si la DB no cargó (ej. en Vercel), solo permitir health y admin/login
 app.use((req, res, next) => {
   if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
-    return res.status(503).json({ error: 'Base de datos no disponible' });
+    return res.status(503).json({
+      error: 'Base de datos no disponible',
+      detail: dbInitError || undefined
+    });
   }
   next();
 });
@@ -89,7 +94,9 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     adminConfigured: !!process.env.ADMIN_PASSWORD,
-    hasDatabase: !!process.env.DATABASE_URL
+    hasDatabase: !!process.env.DATABASE_URL,
+    dbConnected: !!db,
+    dbError: dbInitError || undefined
   });
 });
 
