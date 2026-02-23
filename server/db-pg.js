@@ -15,7 +15,9 @@ function getPool() {
     const useSsl = connectionString.includes('supabase') || connectionString.includes('neon.tech') || connectionString.includes('sslmode=require');
     pool = new Pool({
       connectionString,
-      ssl: useSsl ? { rejectUnauthorized: false } : undefined
+      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 10000
     });
   }
   return pool;
