@@ -322,12 +322,15 @@ export class AdminComponent implements OnInit, OnDestroy {
         imagen_url: url
       }).subscribe({
         next: (s) => {
+          this.guardandoSorteo = false;
           if (s) {
             this.cargarSorteos();
             this.nuevoSorteo = { nombre: '', fecha: '', descripcion: '', premio_descripcion: '', imagen_url: '' };
             this.imagenFile = null;
+            this.error = '';
+          } else {
+            this.error = 'No se pudo crear el sorteo. Revisa la consola (F12) o intenta de nuevo.';
           }
-          this.guardandoSorteo = false;
         },
         error: (err) => {
           if (err?.status === 401) this.on401();
