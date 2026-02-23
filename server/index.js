@@ -7,7 +7,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { initDb } from './db.js';
+import { initDb } from './db-adapter.js';
 import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +15,26 @@ const uploadsDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const db = await initDb();
+
+// En Supabase, seed inicial de stiker_slots si está vacío
+if (process.env.DATABASE_URL) {
+  try {
+    const count = await db.get('SELECT COUNT(*) as n FROM stiker_slots');
+    if (Number(count?.n || 0) === 0) {
+      const nums = Array.from({ length: 10000 }, (_, i) => i.toString().padStart(4, '0'));
+      for (let i = nums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [nums[i], nums[j]] = [nums[j], nums[i]];
+      }
+      for (let i = 0; i < 5000; i++) {
+        await db.run('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)', nums[2 * i], nums[2 * i + 1]);
+      }
+      console.log('Seed: 5000 stiker_slots creados en Supabase.');
+    }
+  } catch (e) {
+    console.warn('Seed stiker_slots:', e.message);
+  }
+}
 const app = express();
 const port = process.env.PORT || 3000;
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -22,6 +42,9 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const adminPassword = process.env.ADMIN_PASSWORD || '';
 const jwtSecret = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || 'change-me-in-production';
+const isPg = !!process.env.DATABASE_URL;
+const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
+const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -95,10 +118,10 @@ app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
 });
 
 // ----- ADMIN: reiniciar stiker_slots a 5000 (para tener los 10000 números) -----
-app.post('/api/admin/reset-stiker-slots', (req, res) => {
+app.post('/api/admin/reset-stiker-slots', async (req, res) => {
   try {
-    db.exec('DELETE FROM stiker_slots');
-    fillStikerSlots5000();
+    await db.exec('DELETE FROM stiker_slots');
+    await fillStikerSlots5000();
     console.log('Stiker slots reiniciados a 5000 (cada número 0000-9999 una sola vez).');
     res.json({ ok: true, total: 5000 });
   } catch (err) {
@@ -110,30 +133,30 @@ app.post('/api/admin/reset-stiker-slots', (req, res) => {
 // ----- STIKERS -----
 
 /** Devuelve si hay un premio mayor activo (programado, fecha hoy o futura). */
-function hayPremioMayorActivo() {
-  return !!getPremioMayorActivoId();
+async function hayPremioMayorActivo() {
+  return !!(await getPremioMayorActivoId());
 }
 
 /** Devuelve el id del premio mayor activo o null. Los stikers de cada campaña se asocian a este sorteo. */
-function getPremioMayorActivoId() {
+async function getPremioMayorActivoId() {
   const hoy = new Date().toISOString().slice(0, 10);
-  const row = db.prepare(`
+  const row = await db.prepare(`
     SELECT id FROM sorteos
     WHERE tipo = 'mayor' AND estado = 'programado'
-    AND (date(fecha) = date(?) OR date(fecha) > date(?))
+    AND (${dateCmpEq} OR ${dateCmpGt})
     LIMIT 1
   `).get(hoy, hoy);
   return row ? row.id : null;
 }
 
-app.get('/api/stikers', (req, res) => {
+app.get('/api/stikers', async (req, res) => {
   try {
-    if (!hayPremioMayorActivo()) {
+    if (!(await hayPremioMayorActivo())) {
       return res.json({ stikers: [] });
     }
 
     const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 5000);
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT id, numero_a as numeroA, numero_b as numeroB,
              CASE WHEN order_id IS NOT NULL THEN 'ocupado' ELSE 'libre' END as estado
       FROM stiker_slots
@@ -150,14 +173,14 @@ app.get('/api/stikers', (req, res) => {
 
 // ----- STIKERS POR CÉDULA (verificar compras) -----
 
-app.get('/api/verificar-stikers', (req, res) => {
+app.get('/api/verificar-stikers', async (req, res) => {
   try {
     const cedula = (req.query.cedula || '').trim();
     if (!cedula) {
       return res.status(400).json({ error: 'Falta el parámetro cedula' });
     }
 
-    const orders = db.prepare(`
+    const orders = await db.prepare(`
       SELECT id, stripe_session_id, status, total_cents, created_at
       FROM orders
       WHERE cedula = ?
@@ -166,7 +189,7 @@ app.get('/api/verificar-stikers', (req, res) => {
 
     const stikers = [];
     for (const order of orders) {
-      const items = db.prepare(`
+      const items = await db.prepare(`
         SELECT numero_a, numero_b FROM order_items WHERE order_id = ?
       `).all(order.id);
       for (const item of items) {
@@ -190,7 +213,7 @@ app.get('/api/verificar-stikers', (req, res) => {
 
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
-    if (!hayPremioMayorActivo()) {
+    if (!(await hayPremioMayorActivo())) {
       return res.status(400).json({
         error: 'No hay sorteo activo. Las compras de stikers están cerradas.'
       });
@@ -228,7 +251,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     if (selectedStikers.length > 0) {
       const params = selectedStikers.flatMap(s => [s.numeroA, s.numeroB]);
       const placeholders = selectedStikers.map(() => '(?, ?)').join(', ');
-      const slots = db.prepare(`
+      const slots = await db.prepare(`
         SELECT id, numero_a, numero_b, order_id
         FROM stiker_slots
         WHERE (numero_a, numero_b) IN (${placeholders})
@@ -241,30 +264,31 @@ app.post('/api/create-checkout-session', async (req, res) => {
         });
       }
 
-      const sorteoMayorId = getPremioMayorActivoId();
-      db.transaction(() => {
-        db.prepare(`
+      const sorteoMayorId = await getPremioMayorActivoId();
+      const runTx = db.transaction(async (tx) => {
+        await tx.prepare(`
           INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
         `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), sorteoMayorId);
 
-        const insertItem = db.prepare(`
+        const insertItem = tx.prepare(`
           INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
         `);
         for (const s of selectedStikers) {
-          insertItem.run(orderId, s.numeroA, s.numeroB);
+          await insertItem.run(orderId, s.numeroA, s.numeroB);
         }
 
-        const updateSlot = db.prepare(`
+        const updateSlot = tx.prepare(`
           UPDATE stiker_slots SET order_id = ? WHERE numero_a = ? AND numero_b = ?
         `);
         for (const s of selectedStikers) {
-          updateSlot.run(orderId, s.numeroA, s.numeroB);
+          await updateSlot.run(orderId, s.numeroA, s.numeroB);
         }
-      })();
+      });
+      await runTx();
     } else {
-      const sorteoMayorId = getPremioMayorActivoId();
-      db.prepare(`
+      const sorteoMayorId = await getPremioMayorActivoId();
+      await db.prepare(`
         INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), sorteoMayorId);
@@ -310,7 +334,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE orders SET stripe_session_id = ? WHERE id = ?
     `).run(session.id, orderId);
 
@@ -344,9 +368,9 @@ app.get('/api/session/:sessionId', async (req, res) => {
     const orderId = session.metadata?.orderId;
     let stikersDetail = session.metadata?.stikersDetail || '';
     if (orderId) {
-      db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
-      registrarBeneficiosAnticipados(orderId);
-      const items = db.prepare(`SELECT numero_a, numero_b FROM order_items WHERE order_id = ?`).all(orderId);
+      await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
+      await registrarBeneficiosAnticipados(orderId);
+      const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
       if (items.length > 0) {
         stikersDetail = items.map(i => `${i.numero_a} - ${i.numero_b}`).join(', ');
       }
@@ -367,7 +391,7 @@ app.get('/api/session/:sessionId', async (req, res) => {
 
 // ----- WEBHOOK STRIPE -----
 
-app.post('/api/webhooks/stripe', (req, res) => {
+app.post('/api/webhooks/stripe', async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 
@@ -387,8 +411,8 @@ app.post('/api/webhooks/stripe', (req, res) => {
     const orderId = session.metadata?.orderId;
     if (orderId) {
       try {
-        db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
-        registrarBeneficiosAnticipados(orderId);
+        await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
+        await registrarBeneficiosAnticipados(orderId);
         console.log('Orden marcada como pagada:', orderId);
       } catch (e) {
         console.error('Error actualizando orden:', e);
@@ -401,10 +425,10 @@ app.post('/api/webhooks/stripe', (req, res) => {
 
 // ----- ADMIN (opcional) -----
 
-app.get('/api/admin/orders', (req, res) => {
+app.get('/api/admin/orders', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
              (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
       FROM orders o
@@ -418,10 +442,10 @@ app.get('/api/admin/orders', (req, res) => {
   }
 });
 
-app.post('/api/admin/orders/:id/confirm-cash', (req, res) => {
+app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
   try {
     const id = req.params.id;
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    const order = await db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     if (!order) {
       return res.status(404).json({ error: 'Orden no encontrada' });
     }
@@ -429,10 +453,10 @@ app.post('/api/admin/orders/:id/confirm-cash', (req, res) => {
       return res.status(400).json({ error: 'La orden ya está marcada como pagada' });
     }
 
-    db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(id);
-    registrarBeneficiosAnticipados(id);
+    await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(id);
+    await registrarBeneficiosAnticipados(id);
 
-    const updated = db.prepare(`
+    const updated = await db.prepare(`
       SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
              (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
       FROM orders o
@@ -446,12 +470,12 @@ app.post('/api/admin/orders/:id/confirm-cash', (req, res) => {
   }
 });
 
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', async (req, res) => {
   try {
-    const totalOrders = db.prepare("SELECT COUNT(*) as n FROM orders WHERE status = 'paid'").get();
-    const totalStikersSold = db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
-    const totalStikers = db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
-    const totalRevenue = db.prepare("SELECT COALESCE(SUM(total_cents), 0) as n FROM orders WHERE status = 'paid'").get();
+    const totalOrders = await db.prepare("SELECT COUNT(*) as n FROM orders WHERE status = 'paid'").get();
+    const totalStikersSold = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
+    const totalStikers = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+    const totalRevenue = await db.prepare("SELECT COALESCE(SUM(total_cents), 0) as n FROM orders WHERE status = 'paid'").get();
     res.json({
       totalOrders: totalOrders.n,
       totalStikersSold: totalStikersSold.n,
@@ -464,9 +488,9 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
-app.get('/api/admin/beneficios', (req, res) => {
+app.get('/api/admin/beneficios', async (req, res) => {
   try {
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT b.id, b.sorteo_id, s.nombre as sorteo_nombre, b.order_id,
              b.numero_a, b.numero_b, b.cedula, b.nombre, b.email, b.telefono, b.created_at
       FROM beneficios_anticipados b
@@ -482,14 +506,14 @@ app.get('/api/admin/beneficios', (req, res) => {
 });
 
 /** Vuelve a revisar todas las órdenes pagadas y registra beneficios anticipados que no se hubieran detectado antes. */
-app.post('/api/admin/revisar-beneficios', (req, res) => {
+app.post('/api/admin/revisar-beneficios', async (req, res) => {
   try {
-    const orders = db.prepare('SELECT id FROM orders WHERE status = ?').all('paid');
+    const orders = await db.prepare('SELECT id FROM orders WHERE status = ?').all('paid');
     let count = 0;
     for (const row of orders) {
-      const before = db.prepare('SELECT COUNT(*) as n FROM beneficios_anticipados WHERE order_id = ?').get(row.id);
-      registrarBeneficiosAnticipados(row.id);
-      const after = db.prepare('SELECT COUNT(*) as n FROM beneficios_anticipados WHERE order_id = ?').get(row.id);
+      const before = await db.prepare('SELECT COUNT(*) as n FROM beneficios_anticipados WHERE order_id = ?').get(row.id);
+      await registrarBeneficiosAnticipados(row.id);
+      const after = await db.prepare('SELECT COUNT(*) as n FROM beneficios_anticipados WHERE order_id = ?').get(row.id);
       if (after.n > before.n) count++;
     }
     console.log('Revisión de beneficios: órdenes pagadas revisadas, nuevas coincidencias:', count);
@@ -502,10 +526,10 @@ app.post('/api/admin/revisar-beneficios', (req, res) => {
 
 // ----- CONFIG (público: precio stiker para la tienda) -----
 
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
   try {
-    const precio = db.prepare("SELECT value FROM config WHERE key = 'precio_stiker_cents'").get();
-    const currency = db.prepare("SELECT value FROM config WHERE key = 'currency'").get();
+    const precio = await db.prepare("SELECT value FROM config WHERE key = 'precio_stiker_cents'").get();
+    const currency = await db.prepare("SELECT value FROM config WHERE key = 'currency'").get();
     res.json({
       precioStikerCents: precio ? parseInt(precio.value, 10) : 5000,
       currency: currency ? currency.value : 'cop'
@@ -518,9 +542,9 @@ app.get('/api/config', (req, res) => {
 
 // ----- ADMIN CONFIG -----
 
-app.get('/api/admin/config', (req, res) => {
+app.get('/api/admin/config', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT key, value FROM config').all();
+    const rows = await db.prepare('SELECT key, value FROM config').all();
     const config = {};
     for (const r of rows) config[r.key] = r.value;
     res.json(config);
@@ -530,19 +554,19 @@ app.get('/api/admin/config', (req, res) => {
   }
 });
 
-app.patch('/api/admin/config', (req, res) => {
+app.patch('/api/admin/config', async (req, res) => {
   try {
     const { precioStikerCents, currency } = req.body;
     if (precioStikerCents !== undefined) {
       const cents = Math.round(Number(precioStikerCents));
       if (cents < 0) return res.status(400).json({ error: 'Precio debe ser >= 0' });
-      db.prepare("INSERT INTO config (key, value) VALUES ('precio_stiker_cents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(cents));
+      await db.prepare("INSERT INTO config (key, value) VALUES ('precio_stiker_cents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(cents));
     }
     if (currency !== undefined && typeof currency === 'string') {
       const val = currency.trim().toLowerCase();
-      db.prepare("INSERT INTO config (key, value) VALUES ('currency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(val);
+      await db.prepare("INSERT INTO config (key, value) VALUES ('currency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(val);
     }
-    const rows = db.prepare('SELECT key, value FROM config').all();
+    const rows = await db.prepare('SELECT key, value FROM config').all();
     const config = {};
     for (const r of rows) config[r.key] = r.value;
     res.json(config);
@@ -556,7 +580,7 @@ app.patch('/api/admin/config', (req, res) => {
 
 const sorteosSelect = 'id, nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numero_ganador_a, numero_ganador_b, numeros_beneficiados, created_at';
 
-app.get('/api/sorteos', (req, res) => {
+app.get('/api/sorteos', async (req, res) => {
   try {
     const estado = req.query.estado;
     let sql = `SELECT ${sorteosSelect} FROM sorteos ORDER BY fecha ASC`;
@@ -565,7 +589,7 @@ app.get('/api/sorteos', (req, res) => {
       sql = `SELECT ${sorteosSelect} FROM sorteos WHERE estado = ? ORDER BY fecha ASC`;
       params.push(estado);
     }
-    const rows = db.prepare(sql).all(...params);
+    const rows = await db.prepare(sql).all(...params);
     res.json({ sorteos: rows });
   } catch (err) {
     console.error('Error GET /api/sorteos:', err);
@@ -573,29 +597,29 @@ app.get('/api/sorteos', (req, res) => {
   }
 });
 
-app.get('/api/sorteos/home', (req, res) => {
+app.get('/api/sorteos/home', async (req, res) => {
   try {
     const hoy = new Date().toISOString().slice(0, 10);
 
-    const principal = db.prepare(`
+    const principal = await db.prepare(`
       SELECT ${sorteosSelect}
       FROM sorteos
       WHERE tipo = 'mayor' AND estado = 'programado'
-      AND (date(fecha) = date(?) OR date(fecha) > date(?))
+      AND (${dateCmpEq} OR ${dateCmpGt})
       ORDER BY fecha ASC
       LIMIT 1
     `).get(hoy, hoy);
 
     let anticipadosActuales = [];
     if (principal) {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT s.id, s.nombre, s.fecha, s.premio_descripcion, s.numeros_beneficiados
         FROM sorteos s
         WHERE s.sorteo_mayor_id = ? AND s.estado = 'programado'
         ORDER BY s.id ASC
       `).all(principal.id);
-      anticipadosActuales = rows.map((row) => {
-        const benef = db.prepare(`
+      anticipadosActuales = await Promise.all(rows.map(async (row) => {
+        const benef = await db.prepare(`
           SELECT numero_a, numero_b FROM beneficios_anticipados WHERE sorteo_id = ? LIMIT 1
         `).get(row.id);
         return {
@@ -603,10 +627,10 @@ app.get('/api/sorteos/home', (req, res) => {
           revelado: !!benef,
           numero_revelado: benef ? `${benef.numero_a}-${benef.numero_b}` : null
         };
-      });
+      }));
     }
 
-    const mayoresRealizados = db.prepare(`
+    const mayoresRealizados = await db.prepare(`
       SELECT ${sorteosSelect}, ganador_nombre, ganador_cedula, ganador_email, ganador_telefono
       FROM sorteos
       WHERE tipo = 'mayor' AND estado = 'realizado'
@@ -625,9 +649,9 @@ app.get('/api/sorteos/home', (req, res) => {
   }
 });
 
-app.get('/api/sorteos/:id', (req, res) => {
+app.get('/api/sorteos/:id', async (req, res) => {
   try {
-    const row = db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
+    const row = await db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Sorteo no encontrado' });
     res.json(row);
   } catch (err) {
@@ -650,20 +674,20 @@ function shuffleArray(arr) {
 }
 
 /** Inserta 5000 stiker_slots: cada número 0000-9999 aparece exactamente una vez; en cada par los dos números son distintos. */
-function fillStikerSlots5000() {
-  const insertSlot = db.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
+async function fillStikerSlots5000(txOrDb = db) {
+  const insertSlot = txOrDb.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
   const nums = Array.from({ length: 10000 }, (_, i) => i.toString().padStart(4, '0'));
   shuffleArray(nums);
   for (let i = 0; i < 5000; i++) {
-    insertSlot.run(nums[2 * i], nums[2 * i + 1]);
+    await insertSlot.run(nums[2 * i], nums[2 * i + 1]);
   }
 }
 
 /** Registra beneficios anticipados cuando una orden queda pagada. Solo coincide con números bendecidos de anticipados de la misma campaña (mismo premio mayor). Sin duplicados. */
-function registrarBeneficiosAnticipados(orderId) {
-  const order = db.prepare('SELECT cedula, nombre, email, telefono, sorteo_mayor_id FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
+async function registrarBeneficiosAnticipados(orderId) {
+  const order = await db.prepare('SELECT cedula, nombre, email, telefono, sorteo_mayor_id FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
   if (!order) return;
-  const items = db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
+  const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
   if (items.length === 0) return;
 
   const toKey = (a, b) => `${pad4(a)}-${pad4(b)}`;
@@ -676,12 +700,12 @@ function registrarBeneficiosAnticipados(orderId) {
 
   // Solo anticipados de la misma campaña (mismo premio mayor) que la orden
   const sorteosBenef = order.sorteo_mayor_id
-    ? db.prepare(`
+    ? await db.prepare(`
         SELECT id, numeros_beneficiados FROM sorteos
         WHERE tipo = 'anticipado' AND estado = 'programado' AND sorteo_mayor_id = ?
         AND numeros_beneficiados IS NOT NULL AND TRIM(CAST(numeros_beneficiados AS TEXT)) <> ''
       `).all(order.sorteo_mayor_id)
-    : db.prepare(`
+    : await db.prepare(`
         SELECT id, numeros_beneficiados FROM sorteos
         WHERE tipo = 'anticipado' AND estado = 'programado' AND numeros_beneficiados IS NOT NULL AND TRIM(CAST(numeros_beneficiados AS TEXT)) <> ''
       `).all();
@@ -735,18 +759,18 @@ function registrarBeneficiosAnticipados(orderId) {
       const matchPar = set.has(s.key) || set.has(s.keyReverse);
       const matchNumero = numerosSueltos.has(s.numeroA) || numerosSueltos.has(s.numeroB);
       const matches = matchPar || matchNumero;
-      const yaEnEsteSorteo = existsBenefEnSorteo.get(srt.id, s.numeroA, s.numeroB);
+      const yaEnEsteSorteo = await existsBenefEnSorteo.get(srt.id, s.numeroA, s.numeroB);
       const yaGanoOtroAnticipado = order.sorteo_mayor_id
-        ? stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB, order.sorteo_mayor_id)
-        : stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB);
+        ? await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB, order.sorteo_mayor_id)
+        : await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB);
       if (matches && !yaEnEsteSorteo && !yaGanoOtroAnticipado) {
-        insertBenef.run(srt.id, orderId, s.numeroA, s.numeroB, order.cedula || null, order.nombre || null, order.email || null, order.telefono || null);
+        await insertBenef.run(srt.id, orderId, s.numeroA, s.numeroB, order.cedula || null, order.nombre || null, order.email || null, order.telefono || null);
       }
     }
   }
 }
 
-app.post('/api/admin/sorteos', (req, res) => {
+app.post('/api/admin/sorteos', async (req, res) => {
   try {
     const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion, imagen_url, numeros_beneficiados } = req.body;
     if (!nombre || !fecha) {
@@ -756,8 +780,8 @@ app.post('/api/admin/sorteos', (req, res) => {
       return res.status(400).json({ error: 'Para Premio Mayor es obligatoria la URL de la imagen del premio (para el hero).' });
     }
 
-    const runTx = db.transaction(() => {
-      const result = db.prepare(`
+    const runTx = db.transaction(async (tx) => {
+      const result = await tx.prepare(`
         INSERT INTO sorteos (nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numeros_beneficiados)
         VALUES (?, ?, ?, ?, 'programado', ?, ?, NULL, ?)
       `).run(
@@ -770,22 +794,20 @@ app.post('/api/admin/sorteos', (req, res) => {
         (tipo !== 'mayor' && numeros_beneficiados) ? String(numeros_beneficiados).trim() || null : null
       );
       const mayorId = result.lastInsertRowid;
-      const row = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(mayorId);
+      const row = await tx.prepare('SELECT * FROM sorteos WHERE id = ?').get(mayorId);
 
       if (tipo === 'mayor') {
-        // Nueva campaña: reiniciar ventas y stikers. Orden respetando FK (stiker_slots referencia orders)
-        db.exec('DELETE FROM beneficios_anticipados;');
-        db.exec('DELETE FROM order_items;');
-        db.prepare('UPDATE stiker_slots SET order_id = NULL').run();
-        db.exec('DELETE FROM orders;');
-        db.exec('DELETE FROM stiker_slots;');
-        fillStikerSlots5000();
+        await tx.exec('DELETE FROM beneficios_anticipados;');
+        await tx.exec('DELETE FROM order_items;');
+        await tx.prepare('UPDATE stiker_slots SET order_id = NULL').run();
+        await tx.exec('DELETE FROM orders;');
+        await tx.exec('DELETE FROM stiker_slots;');
+        await fillStikerSlots5000(tx);
 
         const premioAnticipado = row.premio_descripcion && String(row.premio_descripcion).trim()
           ? String(row.premio_descripcion).trim()
           : '$500.000 COP';
-        // Anticipados: un único número de 4 cifras por premio (no pareja). Fecha = misma del premio mayor (pueden salir en cualquier momento).
-        const insertAnticipado = db.prepare(`
+        const insertAnticipado = tx.prepare(`
           INSERT INTO sorteos (nombre, fecha, descripcion, tipo, estado, premio_descripcion, sorteo_mayor_id, numeros_beneficiados)
           VALUES (?, ?, ?, 'anticipado', 'programado', ?, ?, ?)
         `);
@@ -794,12 +816,12 @@ app.post('/api/admin/sorteos', (req, res) => {
           let num = randomNumero4();
           while (seen.has(num)) num = randomNumero4();
           seen.add(num);
-          insertAnticipado.run(`Anticipado ${i}`, fecha, '', premioAnticipado, mayorId, num);
+          await insertAnticipado.run(`Anticipado ${i}`, fecha, '', premioAnticipado, mayorId, num);
         }
       }
       return row;
     });
-    const row = runTx();
+    const row = await runTx();
     res.status(201).json(row);
   } catch (err) {
     console.error('Error POST /api/admin/sorteos:', err);
@@ -807,11 +829,11 @@ app.post('/api/admin/sorteos', (req, res) => {
   }
 });
 
-app.patch('/api/admin/sorteos/:id', (req, res) => {
+app.patch('/api/admin/sorteos/:id', async (req, res) => {
   try {
     const { nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, numeros_beneficiados } = req.body;
     const id = req.params.id;
-    const current = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    const current = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     if (!current) return res.status(404).json({ error: 'Sorteo no encontrado' });
 
     const updates = [];
@@ -827,8 +849,8 @@ app.patch('/api/admin/sorteos/:id', (req, res) => {
     if (updates.length === 0) return res.json(current);
 
     params.push(id);
-    db.prepare(`UPDATE sorteos SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    const row = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    await db.prepare(`UPDATE sorteos SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    const row = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     res.json(row);
   } catch (err) {
     console.error('Error PATCH /api/admin/sorteos/:id:', err);
@@ -843,10 +865,10 @@ function pad4(s) {
 }
 
 /** Busca el cliente (orden pagada) que tiene un stiker con numero_a-numero_b exacto. Devuelve { ganador, numero_a, numero_b } o null. */
-function buscarGanadorPorPar(numero_a, numero_b) {
+async function buscarGanadorPorPar(numero_a, numero_b) {
   const a = pad4(numero_a);
   const b = pad4(numero_b);
-  const item = db.prepare(`
+  const item = await db.prepare(`
     SELECT oi.numero_a, oi.numero_b, oi.order_id
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
@@ -854,8 +876,8 @@ function buscarGanadorPorPar(numero_a, numero_b) {
     LIMIT 1
   `).get(a, b);
   if (!item) return null;
-  const datosCliente = db.prepare('SELECT id, cedula, nombre, email, telefono FROM orders WHERE id = ?').get(item.order_id);
-  const numerosCliente = db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(item.order_id);
+  const datosCliente = await db.prepare('SELECT id, cedula, nombre, email, telefono FROM orders WHERE id = ?').get(item.order_id);
+  const numerosCliente = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(item.order_id);
   if (!datosCliente) return null;
   return {
     ganador: {
@@ -872,11 +894,10 @@ function buscarGanadorPorPar(numero_a, numero_b) {
 }
 
 /** Busca el cliente que tiene un stiker vendido (orden pagada) donde uno de los dos números coincide con el de 4 cifras. */
-function buscarGanadorPorNumeroUnico(numero) {
+async function buscarGanadorPorNumeroUnico(numero) {
   const n = pad4(numero);
   if (!n || n.length !== 4) return null;
-  // Comparar como texto normalizado; TRIM por si en BD hay espacios o tipo distinto
-  const item = db.prepare(`
+  const item = await db.prepare(`
     SELECT oi.numero_a, oi.numero_b, oi.order_id
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
@@ -885,8 +906,8 @@ function buscarGanadorPorNumeroUnico(numero) {
     LIMIT 1
   `).get(n, n);
   if (!item) return null;
-  const datosCliente = db.prepare('SELECT id, cedula, nombre, email, telefono FROM orders WHERE id = ?').get(item.order_id);
-  const numerosCliente = db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(item.order_id);
+  const datosCliente = await db.prepare('SELECT id, cedula, nombre, email, telefono FROM orders WHERE id = ?').get(item.order_id);
+  const numerosCliente = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(item.order_id);
   if (!datosCliente) return null;
   return {
     ganador: {
@@ -903,16 +924,16 @@ function buscarGanadorPorNumeroUnico(numero) {
 }
 
 /** Indica si existe algún order_item (pagado o no) con ese número de 4 cifras. Para mensajes de error. */
-function existeStikerConNumero(numero) {
+async function existeStikerConNumero(numero) {
   const n = pad4(numero);
   if (!n || n.length !== 4) return { existe: false, pagado: false };
-  const paid = db.prepare(`
+  const paid = await db.prepare(`
     SELECT 1 FROM order_items oi JOIN orders o ON o.id = oi.order_id
     WHERE o.status = 'paid' AND (TRIM(CAST(oi.numero_a AS TEXT)) = ? OR TRIM(CAST(oi.numero_b AS TEXT)) = ?)
     LIMIT 1
   `).get(n, n);
   if (paid) return { existe: true, pagado: true };
-  const pending = db.prepare(`
+  const pending = await db.prepare(`
     SELECT 1 FROM order_items oi JOIN orders o ON o.id = oi.order_id
     WHERE o.status = 'pending' AND (TRIM(CAST(oi.numero_a AS TEXT)) = ? OR TRIM(CAST(oi.numero_b AS TEXT)) = ?)
     LIMIT 1
@@ -920,18 +941,18 @@ function existeStikerConNumero(numero) {
   return { existe: !!pending, pagado: false };
 }
 
-app.get('/api/admin/sorteos/:id/consultar-ganador', (req, res) => {
+app.get('/api/admin/sorteos/:id/consultar-ganador', async (req, res) => {
   try {
     const id = req.params.id;
     const numero = (req.query.numero || req.query.numero_ganador || '').trim().replace(/\D/g, '');
     if (!numero || numero.length === 0) {
       return res.status(400).json({ error: 'Indica el número ganador de 4 cifras (query: numero=1234)' });
     }
-    const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    const sorteo = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     if (!sorteo) return res.status(404).json({ error: 'Sorteo no encontrado' });
-    const resultado = buscarGanadorPorNumeroUnico(numero);
+    const resultado = await buscarGanadorPorNumeroUnico(numero);
     const ganador = resultado ? resultado.ganador : null;
-    const { existe, pagado } = existeStikerConNumero(numero);
+    const { existe, pagado } = await existeStikerConNumero(numero);
     res.json({
       ganador,
       stiker_ganador: resultado ? `${resultado.numero_a}-${resultado.numero_b}` : null,
@@ -944,10 +965,10 @@ app.get('/api/admin/sorteos/:id/consultar-ganador', (req, res) => {
   }
 });
 
-app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
+app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
   try {
     const id = req.params.id;
-    const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    const sorteo = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     if (!sorteo) return res.status(404).json({ error: 'Sorteo no encontrado' });
     if (sorteo.estado === 'realizado') {
       return res.status(400).json({ error: 'Este sorteo ya fue realizado' });
@@ -961,9 +982,9 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
       });
     }
 
-    const resultado = buscarGanadorPorNumeroUnico(numero_ganador);
+    const resultado = await buscarGanadorPorNumeroUnico(numero_ganador);
     if (!resultado) {
-      const { existe, pagado } = existeStikerConNumero(numero_ganador);
+      const { existe, pagado } = await existeStikerConNumero(numero_ganador);
       const error = existe && !pagado
         ? 'Hay una venta con ese número pero la orden no está marcada como pagada. Confirma el pago en Stripe o espera el webhook.'
         : 'No hay ningún comprador con ese número. Extiende la fecha del sorteo para dar más posibilidades de ganar.';
@@ -971,7 +992,7 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
     }
     const { ganador, numero_a: na, numero_b: nb } = resultado;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE sorteos
       SET estado = 'realizado',
           numero_ganador_a = ?,
@@ -992,16 +1013,16 @@ app.post('/api/admin/sorteos/:id/realizar', (req, res) => {
     );
 
     if (sorteo.tipo === 'mayor') {
-      db.prepare(`UPDATE sorteos SET estado = 'realizado' WHERE sorteo_mayor_id = ?`).run(id);
-      db.exec('DELETE FROM beneficios_anticipados;');
-      db.exec('DELETE FROM order_items;');
-      db.exec('DELETE FROM orders;');
-      db.exec('DELETE FROM stiker_slots;');
-      fillStikerSlots5000();
+      await db.prepare(`UPDATE sorteos SET estado = 'realizado' WHERE sorteo_mayor_id = ?`).run(id);
+      await db.exec('DELETE FROM beneficios_anticipados;');
+      await db.exec('DELETE FROM order_items;');
+      await db.exec('DELETE FROM orders;');
+      await db.exec('DELETE FROM stiker_slots;');
+      await fillStikerSlots5000();
       console.log('Nueva campaña: ventas, stikers y anticipados reiniciados después del Premio Mayor.');
     }
 
-    const updated = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    const updated = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     res.json({ sorteo: updated, ganador: resultado.ganador });
   } catch (err) {
     console.error('Error POST /api/admin/sorteos/:id/realizar:', err);
@@ -1021,10 +1042,10 @@ app.get('/api/health', (_, res) => {
 
 // ----- PROGRESO (público) -----
 
-app.get('/api/progreso', (req, res) => {
+app.get('/api/progreso', async (req, res) => {
   try {
-    const totalStikersSold = db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
-    const totalStikers = db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+    const totalStikersSold = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
+    const totalStikers = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
     res.json({
       totalStikersSold: totalStikersSold.n,
       totalStikers: totalStikers.n
@@ -1035,15 +1056,20 @@ app.get('/api/progreso', (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Servidor en http://localhost:${port}`);
-  if (!process.env.STRIPE_SECRET_KEY) {
-    console.warn('⚠️  STRIPE_SECRET_KEY no definida. Crea server/.env con tu clave.');
-  }
-  if (!stripeWebhookSecret) {
-    console.warn('⚠️  STRIPE_WEBHOOK_SECRET no definida. Los webhooks no verificarán firma.');
-  }
-  if (!adminPassword) {
-    console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
-  }
-});
+// En Vercel no hacemos listen; exportamos la app para el serverless handler
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Servidor en http://localhost:${port}`);
+    if (!process.env.STRIPE_SECRET_KEY) {
+      console.warn('⚠️  STRIPE_SECRET_KEY no definida. Crea server/.env con tu clave.');
+    }
+    if (!stripeWebhookSecret) {
+      console.warn('⚠️  STRIPE_WEBHOOK_SECRET no definida. Los webhooks no verificarán firma.');
+    }
+    if (!adminPassword) {
+      console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
+    }
+  });
+}
+
+export default app;
