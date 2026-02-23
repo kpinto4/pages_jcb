@@ -61,6 +61,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
+// ----- HEALTH (para comprobar en Vercel que la API y env vars responden) -----
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    adminConfigured: !!process.env.ADMIN_PASSWORD,
+    hasDatabase: !!process.env.DATABASE_URL
+  });
+});
+
 // ----- ADMIN LOGIN (público, antes del middleware) -----
 
 app.post('/api/admin/login', (req, res) => {

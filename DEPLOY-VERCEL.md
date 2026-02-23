@@ -26,7 +26,7 @@ Asegúrate de que el repositorio tenga todos los cambios y esté en GitHub (o Gi
 4. **Root Directory**: raíz del repo (por defecto).
 5. **Build Command**: `npm run build`
 6. **Output Directory**: `dist/pages_jcb/browser`
-7. **Install Command**: `npm install && cd server && npm install`
+7. **Install Command**: `npm run vercel-install` (instala raíz + `server/`)
 
 ### 4. Variables de entorno en Vercel
 
@@ -49,6 +49,38 @@ y copia el **Signing secret** en `STRIPE_WEBHOOK_SECRET`.
 ### 5. Desplegar
 
 Haz **Deploy**. En cada push a la rama principal, Vercel volverá a desplegar.
+
+**Importante:** Si añades o cambias variables de entorno después del primer deploy, haz un **nuevo deploy** (Redeploy) para que las funciones serverless las reciban.
+
+---
+
+## Panel de administración (login)
+
+### Qué necesitas
+
+1. **Variable `ADMIN_PASSWORD`** en Vercel (Settings → Environment Variables), con el valor exacto que quieras usar como contraseña del panel. Sin espacios extra al inicio/final.
+2. Tras añadir o cambiar `ADMIN_PASSWORD`, **Redeploy** el proyecto para que la función `/api` use la nueva variable.
+
+### Comprobar que la API y el admin están configurados
+
+Abre en el navegador (sustituye por tu URL de Vercel):
+
+- **`https://tu-proyecto.vercel.app/api/health`**
+
+Deberías ver algo como:
+
+```json
+{ "ok": true, "adminConfigured": true, "hasDatabase": true }
+```
+
+- Si `adminConfigured` es **false**: la variable `ADMIN_PASSWORD` no está definida o el deploy no se hizo después de añadirla. Añádela en Vercel y vuelve a desplegar.
+- Si la página no carga o da error: la API no está respondiendo (revisa el deploy o la ruta).
+
+### Si no te deja entrar con la contraseña
+
+1. **Error 503** o mensaje "Admin no configurado": falta `ADMIN_PASSWORD` en Vercel o hace falta **Redeploy**.
+2. **Error 401** o "Contraseña incorrecta": la contraseña que escribes no coincide exactamente con `ADMIN_PASSWORD` (mayúsculas/minúsculas, espacios).
+3. En el navegador: F12 → pestaña **Red** → intenta entrar al admin y mira la petición a `api/admin/login`. Revisa el **status** (401, 503, 500) y el cuerpo de la respuesta para saber si es problema de variable o de contraseña.
 
 ### 6. Dominio
 
@@ -79,3 +111,4 @@ Para probar en local con la misma base que en Vercel:
 - **`server/schema-supabase.sql`**: script para crear las tablas en Supabase.
 - **`vercel.json`**: configuración de build, rutas y rewrites para Vercel.
 - **`api/index.js`**: entrada serverless que usa el Express del backend.
+- **`GET /api/health`**: devuelve `ok`, `adminConfigured` y `hasDatabase` para comprobar que la API y las variables de entorno responden.

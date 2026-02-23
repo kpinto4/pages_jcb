@@ -5,12 +5,7 @@
   "installCommand": "npm run vercel-install",
   "framework": "angular",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/api", "destination": "/api" }
-  ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/api/(.*)", "dest": "/api/index.js" },
-    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
