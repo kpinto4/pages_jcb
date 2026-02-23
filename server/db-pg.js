@@ -1,24 +1,35 @@
 /**
  * Adaptador PostgreSQL para Vercel/Supabase.
- * Usar cuando DATABASE_URL esté definida (ej. en Vercel).
+ * Si DATABASE_URL es de Neon, usa @neondatabase/serverless (mejor en serverless).
+ * Si no, usa pg (node-postgres).
  */
-import pg from 'pg';
-
-const { Pool } = pg;
-
 let pool = null;
 
-function getPool() {
+async function getPool() {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
+    let connectionString = (process.env.DATABASE_URL || '').trim().replace(/[\r\n]+/g, '').trim();
     if (!connectionString) throw new Error('DATABASE_URL no definida');
-    const useSsl = connectionString.includes('supabase') || connectionString.includes('neon.tech') || connectionString.includes('sslmode=require');
-    pool = new Pool({
-      connectionString,
-      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-      connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 10000
-    });
+    if (!connectionString.includes('@') || !connectionString.includes('.')) {
+      throw new Error('DATABASE_URL no parece una URL válida (debe ser postgresql://usuario:pass@host.dominio/db)');
+    }
+    const isNeon = connectionString.includes('neon.tech');
+    if (isNeon) {
+      const { Pool, neonConfig } = await import('@neondatabase/serverless');
+      try {
+        const ws = (await import('ws')).default;
+        neonConfig.webSocketConstructor = ws;
+      } catch (_) {}
+      pool = new Pool({ connectionString });
+    } else {
+      const pg = await import('pg');
+      const useSsl = connectionString.includes('supabase') || connectionString.includes('sslmode=require');
+      pool = new pg.default.Pool({
+        connectionString,
+        ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 10000
+      });
+    }
   }
   return pool;
 }
@@ -33,7 +44,8 @@ function toPgParams(sql, params = []) {
 
 async function query(sql, params = []) {
   const { sql: pgSql, params: pgParams } = toPgParams(sql, params);
-  const res = await getPool().query(pgSql, pgParams);
+  const p = await getPool();
+  const res = await p.query(pgSql, pgParams);
   return res;
 }
 
@@ -73,15 +85,17 @@ export const dbPg = {
   },
 
   async exec(sql) {
+    const p = await getPool();
     const statements = sql.split(';').map(s => s.trim()).filter(Boolean);
     for (const st of statements) {
-      await getPool().query(st);
+      await p.query(st);
     }
   },
 
   transaction(fn) {
     return async function runTx() {
-      const client = await getPool().connect();
+      const p = await getPool();
+      const client = await p.connect();
       try {
         await client.query('BEGIN');
         const txDb = {
@@ -140,6 +154,7 @@ export const dbPg = {
 };
 
 export async function initDbPg() {
-  await getPool().query('SELECT 1');
+  const p = await getPool();
+  await p.query('SELECT 1');
   return dbPg;
 }
