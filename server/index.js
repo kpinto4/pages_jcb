@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import Stripe from 'stripe';
@@ -11,6 +11,8 @@ import { initDb } from './db-adapter.js';
 import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Cargar .env desde la carpeta server (funciona aunque ejecutes desde la raíz)
+dotenv.config({ path: path.join(__dirname, '.env') });
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
