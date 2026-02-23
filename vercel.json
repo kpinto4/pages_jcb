@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist/pages_jcb/browser",
-  "installCommand": "npm install && cd server && npm install",
+  "installCommand": "npm run vercel-install",
   "framework": "angular",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
