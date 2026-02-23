@@ -23,8 +23,8 @@ export class AdminAuthService {
   }
 
   login(password: string): Observable<{ token: string } | null> {
-    if (!this.apiUrl) return of(null);
-    return this.http.post<{ token: string }>(`${this.apiUrl}/api/admin/login`, { password }).pipe(
+    const base = this.apiUrl || '';
+    return this.http.post<{ token: string }>(`${base}/api/admin/login`, { password }).pipe(
       tap((res) => {
         if (res?.token) {
           sessionStorage.setItem(TOKEN_KEY, res.token);
