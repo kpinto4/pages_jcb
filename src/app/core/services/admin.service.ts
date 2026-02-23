@@ -120,7 +120,7 @@ export class AdminService {
 
   createSorteo(body: { nombre: string; fecha: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string }): Observable<Sorteo | null> {
     return this.http.post<Sorteo>(`${this.base}/api/admin/sorteos`, body).pipe(
-      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
   }
 

@@ -116,7 +116,9 @@ export const dbPg = {
                 if (isInsert && !/RETURNING\s+/i.test(sql)) runSql = sql.replace(/;\s*$/, '') + ' RETURNING id';
                 const { sql: pgSql, params } = toPgParams(runSql, p);
                 const res = await client.query(pgSql, params);
-                return { lastInsertRowid: isInsert && res.rows?.[0] ? res.rows[0].id : 0 };
+                const id = isInsert && res.rows?.[0] ? res.rows[0].id : 0;
+                const lastInsertRowid = typeof id === 'bigint' ? Number(id) : (id || 0);
+                return { lastInsertRowid };
               }
             };
           },
@@ -134,7 +136,9 @@ export const dbPg = {
             if (isInsert && !/RETURNING\s+/i.test(s)) runSql = s.replace(/;\s*$/, '') + ' RETURNING id';
             const { sql: pgSql, params } = toPgParams(runSql, p);
             const res = await client.query(pgSql, params);
-            return { lastInsertRowid: isInsert && res.rows?.[0] ? res.rows[0].id : 0 };
+            const id = isInsert && res.rows?.[0] ? res.rows[0].id : 0;
+            const lastInsertRowid = typeof id === 'bigint' ? Number(id) : (id || 0);
+            return { lastInsertRowid };
           },
           exec: async (execSql) => {
             const statements = execSql.split(';').map(x => x.trim()).filter(Boolean);
