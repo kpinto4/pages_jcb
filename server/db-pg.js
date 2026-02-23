@@ -12,9 +12,10 @@ function getPool() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL no definida');
+    const useSsl = connectionString.includes('supabase') || connectionString.includes('neon.tech') || connectionString.includes('sslmode=require');
     pool = new Pool({
       connectionString,
-      ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined
+      ssl: useSsl ? { rejectUnauthorized: false } : undefined
     });
   }
   return pool;

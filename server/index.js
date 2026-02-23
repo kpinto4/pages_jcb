@@ -6,20 +6,36 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { initDb } from './db-adapter.js';
 import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Cargar .env desde la carpeta server (funciona aunque ejecutes desde la raíz)
 dotenv.config({ path: path.join(__dirname, '.env') });
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const db = await initDb();
+// En Vercel el filesystem es de solo lectura; usar /tmp para uploads
+let uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (process.env.VERCEL) {
+  uploadsDir = path.join(os.tmpdir(), 'uploads');
+}
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+} catch (e) {
+  uploadsDir = path.join(os.tmpdir(), 'uploads');
+  try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (_) {}
+}
 
-// En Supabase, seed inicial de stiker_slots si está vacío
-if (process.env.DATABASE_URL) {
+let db;
+try {
+  db = await initDb();
+} catch (err) {
+  console.error('DB init failed:', err.message);
+  db = null;
+}
+
+// En Supabase/Neon, seed inicial de stiker_slots si está vacío
+if (db && process.env.DATABASE_URL) {
   try {
     const count = await db.get('SELECT COUNT(*) as n FROM stiker_slots');
     if (Number(count?.n || 0) === 0) {
@@ -50,6 +66,13 @@ const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+// Si la DB no cargó (ej. en Vercel), solo permitir health y admin/login
+app.use((req, res, next) => {
+  if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
+    return res.status(503).json({ error: 'Base de datos no disponible' });
+  }
+  next();
+});
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Webhook debe leer body raw para verificar firma
