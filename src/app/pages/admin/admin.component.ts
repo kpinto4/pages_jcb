@@ -337,22 +337,23 @@ export class AdminComponent implements OnInit, OnDestroy {
       });
     };
 
-    if (this.imagenFile) {
+    // Si hay URL, usarla (más fiable en producción/Vercel). Si no, intentar subir el archivo.
+    if (imagenUrl) {
+      doCreate(imagenUrl);
+    } else if (this.imagenFile) {
       this.adminService.uploadImage(this.imagenFile).subscribe({
         next: (res) => {
           if (res?.url) doCreate(res.url);
           else {
-            this.error = 'No se pudo subir la imagen.';
+            this.error = 'No se pudo subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
             this.guardandoSorteo = false;
           }
         },
         error: () => {
-          this.error = 'Error al subir la imagen.';
+          this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
           this.guardandoSorteo = false;
         }
       });
-    } else {
-      doCreate(imagenUrl!);
     }
   }
 
