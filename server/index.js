@@ -879,8 +879,8 @@ app.post('/api/admin/sorteos', async (req, res) => {
     res.status(201).json(toJSONSafe(row));
   } catch (err) {
     console.error('Error POST /api/admin/sorteos:', err);
-    const msg = err?.message || 'Error al crear el sorteo';
-    res.status(500).json({ error: msg });
+    const msg = (err && (err.message || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al crear el sorteo';
+    if (!res.headersSent) res.status(500).json({ error: String(msg) });
   }
 });
 

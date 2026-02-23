@@ -334,7 +334,11 @@ export class AdminComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           if (err?.status === 401) this.on401();
-          else this.error = err?.error?.error || 'Error al crear el sorteo.';
+          else {
+            const e = err?.error;
+            const msg = typeof e === 'string' ? e : (e?.error ?? e?.message ?? 'Error al crear el sorteo.');
+            this.error = typeof msg === 'string' ? msg : 'Error al crear el sorteo.';
+          }
           this.guardandoSorteo = false;
         }
       });
