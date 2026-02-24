@@ -1,12 +1,5 @@
 /**
- * Catch-all para /api/* en Vercel.
- * Espera a que Express termine de enviar la respuesta antes de cerrar la función.
+ * Catch-all para /api/* (una o más rutas).
  */
-export default async function handler(req, res) {
-  const { default: app } = await import('../server/index.js');
-  return new Promise((resolve, reject) => {
-    res.on('finish', resolve);
-    res.on('error', reject);
-    app(req, res);
-  });
-}
+import handler from './lib/handler.js';
+export default handler;
