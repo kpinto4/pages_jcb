@@ -47,15 +47,15 @@ export class SorteosService {
   constructor(private http: HttpClient) {}
 
   getHomeData(): Observable<HomeSorteosResponse | null> {
-    if (!this.apiUrl) return of(null);
-    return this.http.get<HomeSorteosResponse>(`${this.apiUrl}/api/sorteos/home`).pipe(
+    const base = this.apiUrl || '';
+    return this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
       catchError(() => of(null))
     );
   }
 
   getProgreso(): Observable<ProgresoResponse | null> {
-    if (!this.apiUrl) return of(null);
-    return this.http.get<ProgresoResponse>(`${this.apiUrl}/api/progreso`).pipe(
+    const base = this.apiUrl || '';
+    return this.http.get<ProgresoResponse>(`${base}/api/progreso`).pipe(
       catchError(() => of(null))
     );
   }

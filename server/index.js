@@ -108,6 +108,7 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
+    stripe: !!process.env.STRIPE_SECRET_KEY,
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
     dbConnected: !!db,
