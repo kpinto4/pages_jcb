@@ -76,6 +76,7 @@ const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const adminPassword = process.env.ADMIN_PASSWORD || '';
 const rawJwt = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || '';
 const jwtSecret = (rawJwt && String(rawJwt).trim()) ? String(rawJwt).trim() : (adminPassword.trim() || 'change-me-in-production');
+// Sin restricción de longitud para JWT_SECRET: cualquier valor no vacío (o ADMIN_PASSWORD) vale.
 const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
