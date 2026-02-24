@@ -14,5 +14,9 @@ else if (!process.env.NODE_PATH.includes(nodeModules)) process.env.NODE_PATH = n
 
 export default async function handler(req, res) {
   const { default: app } = await import('../server/index.js');
-  return app(req, res);
+  return new Promise((resolve, reject) => {
+    res.on('finish', resolve);
+    res.on('error', reject);
+    app(req, res);
+  });
 }
