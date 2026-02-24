@@ -4,11 +4,11 @@ Sigue este orden al crear un **nuevo** proyecto en Vercel.
 
 ---
 
-## 1. Base de datos (Supabase)
+## 1. Base de datos (Neon o Supabase)
 
-- [ ] Proyecto creado en [Supabase](https://supabase.com).
-- [ ] En **Project Settings → Database** copias la **Connection string** (URI).
-- [ ] En **SQL Editor** ejecutas todo el contenido de **`server/schema-supabase.sql`**.
+- [ ] Proyecto creado en [Neon](https://neon.tech) o [Supabase](https://supabase.com).
+- [ ] Copia la **Connection string** (usa la URL con **pooler** en Neon: `-pooler` en el host).
+- [ ] En el **SQL Editor** ejecuta todo el contenido de **`server/schema-supabase.sql`**.
 
 ---
 
@@ -27,13 +27,14 @@ No hagas el primer Deploy todavía si quieres configurar antes las variables.
 
 En **Settings → Environment Variables** del proyecto en Vercel añade al menos:
 
-| Variable           | Obligatoria | Uso |
-|--------------------|-------------|-----|
-| `DATABASE_URL`     | Sí          | Conexión a Supabase (PostgreSQL). |
-| `ADMIN_PASSWORD`   | Sí          | Contraseña del panel de administración. **La que pongas aquí es la que debes escribir en el login.** |
-| `JWT_SECRET`       | Recomendada | Secreto para las sesiones del admin (si no la pones, se usa `ADMIN_PASSWORD`). |
-| `STRIPE_SECRET_KEY`| Opcional    | Pagos con Stripe. |
-| `STRIPE_WEBHOOK_SECRET` | Opcional | Webhooks de Stripe. |
+| Variable               | Obligatoria | Uso |
+|------------------------|-------------|-----|
+| `DATABASE_URL`         | Sí          | Conexión a Neon/Supabase (PostgreSQL). En Neon usa la URL con `-pooler`. |
+| `ADMIN_PASSWORD`       | Sí          | Contraseña del panel de administración. **La que pongas aquí es la que debes escribir en el login.** |
+| `JWT_SECRET`           | Recomendada | Secreto para las sesiones del admin (si no la pones, se usa `ADMIN_PASSWORD`). |
+| `BLOB_READ_WRITE_TOKEN`| Para imágenes | Token de Vercel Blob. En el proyecto Vercel: **Storage** → crear Blob Store → copiar el token. Sin esto, la subida de imágenes del premio mayor falla en producción. |
+| `STRIPE_SECRET_KEY`    | Opcional    | Pagos con Stripe. |
+| `STRIPE_WEBHOOK_SECRET`| Opcional    | Webhooks de Stripe. |
 
 - Escribe `ADMIN_PASSWORD` **exactamente** como quieras que sea la contraseña (sin espacios extra).
 - Para **Production**, **Preview** y **Development** puedes marcar los tres si quieres que funcione en todos los entornos.

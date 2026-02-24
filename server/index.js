@@ -80,6 +80,8 @@ const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
 app.use(cors({ origin: true, credentials: true }));
+// Webhook debe leer body raw antes de que express.json lo parsee
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
 // Si la DB no cargó (ej. en Vercel), solo permitir health y admin/login
 app.use((req, res, next) => {
@@ -93,13 +95,13 @@ app.use((req, res, next) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-// Webhook debe leer body raw para verificar firma
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
-});
+// Multer: en Vercel usamos memoryStorage (luego subimos a Blob); local usamos disk
+const storage = process.env.VERCEL
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => cb(null, uploadsDir),
+      filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
+    });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ----- HEALTH (para comprobar en Vercel que la API y env vars responden) -----
@@ -159,15 +161,32 @@ function adminAuthMiddleware(req, res, next) {
 app.use('/api/admin', adminAuthMiddleware);
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
+app.post('/api/admin/upload-image', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const baseUrl = req.protocol + '://' + req.get('host');
-    const url = baseUrl + '/uploads/' + req.file.filename;
+
+    let url;
+    if (process.env.VERCEL) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return res.status(503).json({
+          error: 'BLOB_READ_WRITE_TOKEN no configurado. Crea un Blob Store en Vercel → Storage y añade el token.'
+        });
+      }
+      const { put } = await import('@vercel/blob');
+      const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase();
+      const blob = await put(`premios/${randomUUID()}${ext}`, req.file.buffer, {
+        access: 'public',
+        addRandomSuffix: false
+      });
+      url = blob.url;
+    } else {
+      const baseUrl = req.protocol + '://' + req.get('host');
+      url = baseUrl + '/uploads/' + req.file.filename;
+    }
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || 'Error al subir imagen' });
   }
 });
 
@@ -1083,16 +1102,6 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
     console.error('Error POST /api/admin/sorteos/:id/realizar:', err);
     res.status(500).json({ error: err.message });
   }
-});
-
-// ----- HEALTH -----
-
-app.get('/api/health', (_, res) => {
-  res.json({
-    ok: true,
-    stripe: !!process.env.STRIPE_SECRET_KEY,
-    db: true
-  });
 });
 
 // ----- PROGRESO (público) -----
