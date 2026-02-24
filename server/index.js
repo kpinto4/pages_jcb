@@ -74,7 +74,8 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const adminPassword = process.env.ADMIN_PASSWORD || '';
-const jwtSecret = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || 'change-me-in-production';
+const rawJwt = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || '';
+const jwtSecret = (rawJwt && String(rawJwt).trim()) ? String(rawJwt).trim() : (adminPassword.trim() || 'change-me-in-production');
 const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
@@ -128,10 +129,6 @@ app.post('/api/admin/login', (req, res) => {
     }
     if (!password || password !== expectedPassword) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
-    }
-    if (!jwtSecret || String(jwtSecret).trim().length < 8) {
-      console.error('JWT_SECRET demasiado corto o vacío');
-      return res.status(503).json({ error: 'Configuración incompleta. JWT_SECRET debe tener al menos 8 caracteres.' });
     }
     const token = jwt.sign(
       { sub: 'admin', role: 'admin' },
