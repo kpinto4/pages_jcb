@@ -1,8 +1,12 @@
 /**
  * Catch-all para /api/* en Vercel.
- * Todas las rutas /api/health, /api/admin/login, etc. pasan al Express.
+ * Espera a que Express termine de enviar la respuesta antes de cerrar la función.
  */
 export default async function handler(req, res) {
   const { default: app } = await import('../server/index.js');
-  return app(req, res);
+  return new Promise((resolve, reject) => {
+    res.on('finish', resolve);
+    res.on('error', reject);
+    app(req, res);
+  });
 }

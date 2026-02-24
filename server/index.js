@@ -119,12 +119,17 @@ app.get('/api/health', (req, res) => {
 
 app.post('/api/admin/login', (req, res) => {
   try {
-    const { password } = req.body || {};
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const password = typeof body.password === 'string' ? body.password : '';
     if (!adminPassword) {
       return res.status(503).json({ error: 'Admin no configurado. Define ADMIN_PASSWORD en .env' });
     }
     if (!password || password !== adminPassword) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
+    }
+    if (!jwtSecret || jwtSecret.length < 16) {
+      console.error('JWT_SECRET demasiado corto o vacío');
+      return res.status(503).json({ error: 'Configuración incompleta. JWT_SECRET debe tener al menos 16 caracteres.' });
     }
     const token = jwt.sign(
       { sub: 'admin', role: 'admin' },
@@ -133,7 +138,7 @@ app.post('/api/admin/login', (req, res) => {
     );
     res.json({ token });
   } catch (err) {
-    console.error('Error login:', err);
+    console.error('Error login:', err?.message || err);
     res.status(500).json({ error: 'Error al iniciar sesión' });
   }
 });
