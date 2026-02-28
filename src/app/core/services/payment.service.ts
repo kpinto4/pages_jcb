@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, catchError, map, of } from 'rxjs';
+import { Observable, catchError, map, of, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface CreateCheckoutSessionRequest {
@@ -34,16 +34,21 @@ export interface StikerCompradoFromApi {
 }
 
 export interface CreateCheckoutSessionResponse {
-  url: string;
+  url?: string;
   sessionId: string;
+  /** Wompi: redirección al checkout de Wompi (sandbox o producción) */
+  provider?: 'wompi';
+  checkoutUrl?: string;
 }
 
 export interface SessionDetails {
   id: string;
-  customer_email: string | null;
-  amount_total: number | null;
-  currency: string | null;
-  metadata: Record<string, string>;
+  customer_email?: string | null;
+  amount_total?: number | null;
+  currency?: string | null;
+  metadata?: Record<string, string>;
+  /** Wompi: orden aún no confirmada por webhook */
+  status?: 'pending';
 }
 
 @Injectable({
@@ -55,10 +60,13 @@ export class PaymentService {
   constructor(private http: HttpClient) {}
 
   /**
-   * Crea una sesión de pago en el backend y devuelve la URL de Stripe Checkout.
+   * Crea una sesión de pago en el backend y devuelve la URL de Wompi Checkout.
    * Redirige al usuario a esa URL para completar el pago.
    */
   createCheckoutSession(request: CreateCheckoutSessionRequest): Observable<CreateCheckoutSessionResponse> {
+    if (!this.apiUrl) {
+      return throwError(() => new Error('API de pagos no configurada. Usa "Simular pago" para pruebas.'));
+    }
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const successUrl = `${origin}/comprar-stikers?success=true&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${origin}/comprar-stikers?canceled=true`;
@@ -78,6 +86,29 @@ export class PaymentService {
   }
 
   /**
+   * Simula un pago en el backend: crea la orden como pagada y reserva los stikers.
+   * Así al verificar por cédula aparecen como vendidos.
+   */
+  simulatePayment(request: {
+    amount: number;
+    currency?: string;
+    customerEmail: string;
+    customerName?: string;
+    metadata?: Record<string, string>;
+    selectedStikers: Array<{ numeroA: string; numeroB: string }>;
+  }): Observable<{ sessionId: string; ok: boolean }> {
+    if (!this.apiUrl) {
+      return throwError(() => new Error('API no configurada. Revisa la URL del backend.'));
+    }
+    return this.http.post<{ sessionId: string; ok: boolean }>(`${this.apiUrl}/api/simulate-payment`, request).pipe(
+      catchError((err) => {
+        console.error('Error al simular pago:', err);
+        throw err;
+      })
+    );
+  }
+
+  /**
    * Obtiene los detalles de una sesión completada (para la página de éxito).
    */
   getSessionDetails(sessionId: string): Observable<SessionDetails | null> {
@@ -91,14 +122,14 @@ export class PaymentService {
   }
 
   /**
-   * Comprueba si el backend de pago está disponible.
+   * Comprueba si el backend de pago está disponible y si Wompi está configurado.
    */
-  healthCheck(): Observable<{ ok: boolean; stripe: boolean }> {
+  healthCheck(): Observable<{ ok: boolean; wompi: boolean }> {
     if (!this.apiUrl) {
-      return of({ ok: false, stripe: false });
+      return of({ ok: false, wompi: false });
     }
-    return this.http.get<{ ok: boolean; stripe: boolean }>(`${this.apiUrl}/api/health`).pipe(
-      catchError(() => of({ ok: false, stripe: false }))
+    return this.http.get<{ ok: boolean; wompi: boolean }>(`${this.apiUrl}/api/health`).pipe(
+      catchError(() => of({ ok: false, wompi: false }))
     );
   }
 

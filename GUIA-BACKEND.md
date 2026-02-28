@@ -8,9 +8,9 @@ Esta guía explica cómo está hecho el backend del **Juego de la Ciudad Bonita*
 
 El backend es un servidor **Node.js + Express** que:
 
-- Guarda todo en una base de datos **SQLite** (archivo `server/data.db`).
-- Ofrece APIs para: listar stikers, verificar stikers por cédula, crear pagos con Stripe y recibir webhooks.
-- **Regla importante:** un stiker (par de números) está **vendido** cuando en la base de datos está vinculado a una orden y esa orden puede estar en estado **pending** (reservada, aún no pagó) o **paid** (ya pagó).
+- Usa **PostgreSQL** como base de datos (obligatorio; ver `server/schema-supabase.sql` y `DATABASE_URL` en `.env`).
+- Ofrece APIs para: listar stikers, verificar stikers por cédula y, cuando la pasarela esté activa (próximamente Wompi), crear pagos.
+- **Regla importante:** un stiker (par de números) está **vendido** cuando en la base de datos está vinculado a una orden y esa orden puede estar en estado **pending** (reservada) o **paid** (ya pagó).
 
 ---
 
@@ -30,7 +30,7 @@ Cada fila es **un stiker**: un par de números de 4 cifras (`numero_a`, `numero_
 **Cómo se sabe si un número ya se compró:**  
 Si `order_id` **no es NULL**, ese par de números ya está asignado a una compra (reservada o pagada). En la API de stikers se devuelve como `estado: 'ocupado'`.
 
-Al arrancar el servidor, si la tabla está vacía, se crean 300 stikers con pares de números aleatorios.
+Si la tabla está vacía (p. ej. tras crear un nuevo Premio Mayor), el backend crea 5000 stikers (cada número 0000-9999 una vez).
 
 ---
 
@@ -48,7 +48,7 @@ Una fila por compra: datos del comprador y estado del pago.
 | `telefono`         | Teléfono (opcional). |
 | `total_cents`       | Total en centavos. |
 | `currency`         | Moneda (ej. `usd`). |
-| `status`           | **`pending`** = reservado, aún no pagó. **`paid`** = ya pagó (Stripe confirmó). |
+| `status`           | **`pending`** = reservado, aún no pagó. **`paid`** = ya pagó (pasarela o "Simular pago"). |
 | `created_at`       | Fecha de creación. |
 
 Aquí se guardan **las personas** (cedula, nombre, email, etc.) y el estado de la compra. Los **números concretos** que compraron van en `order_items` y en `stiker_slots`.
@@ -140,8 +140,9 @@ id  numero_a  numero_b  order_id    id (UUID)  cedula  status     order_id  nume
 
 | Archivo      | Qué hace |
 |-------------|----------|
-| `server/db.js`   | Crea la base SQLite, las tablas (`orders`, `order_items`, `stiker_slots`) y el seed de stikers. |
-| `server/index.js`| Express: rutas `/api/stikers`, `/api/verificar-stikers`, `/api/create-checkout-session`, `/api/session/...`, `/api/webhooks/stripe`, etc. |
-| `server/data.db` | Base SQLite (se crea al iniciar; no subir a git). |
+| `server/db-adapter.js` | Punto de entrada de BD (solo PostgreSQL). |
+| `server/db-pg.js`      | Adaptador PostgreSQL (Neon, Supabase). |
+| `server/schema-supabase.sql` | Script para crear tablas en Postgres. |
+| `server/index.js`| Express: rutas `/api/stikers`, `/api/verificar-stikers`, `/api/create-checkout-session`, `/api/session/...`, `/api/webhooks/stripe`, admin, etc. |
 
 Con esta guía tienes claro cómo el backend guarda y usa los números de las personas que ya compraron: por la relación entre `stiker_slots.order_id`, `orders` y `order_items`.

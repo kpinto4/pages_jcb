@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { Subject, takeUntil } from 'rxjs';
 import { SorteosService, Sorteo, ProgresoResponse } from '../../core/services/sorteos.service';
 
 @Component({
@@ -26,7 +27,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
 
-  private countdownIntervalId: any;
+  private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly destroy$ = new Subject<void>();
 
   constructor(private sorteosService: SorteosService) {}
 
@@ -36,6 +38,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
     if (this.countdownIntervalId) {
       clearInterval(this.countdownIntervalId);
     }
@@ -47,7 +51,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   }
 
   private loadHomeData(): void {
-    this.sorteosService.getHomeData().subscribe((data) => {
+    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe((data) => {
       if (!data) return;
       this.principal = data.principal ?? null;
       if (!this.principal) return;
@@ -59,7 +63,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   }
 
   private loadProgreso(): void {
-    this.sorteosService.getProgreso().subscribe((data: ProgresoResponse | null) => {
+    this.sorteosService.getProgreso().pipe(takeUntil(this.destroy$)).subscribe((data: ProgresoResponse | null) => {
       if (!data) {
         return;
       }
@@ -72,7 +76,9 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
     if (this.countdownIntervalId) {
       clearInterval(this.countdownIntervalId);
     }
-    const targetDate = new Date(dateIso).getTime();
+    // Normalizar "YYYY-MM-DD" a medianoche hora local para evitar bug UTC off-by-one en Colombia
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? `${dateIso}T00:00:00` : dateIso;
+    const targetDate = new Date(normalized).getTime();
     if (!targetDate) return;
 
     this.updateCountdown(targetDate);

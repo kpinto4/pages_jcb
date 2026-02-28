@@ -52,10 +52,10 @@
         </div>
       </div>
 
-      <!-- Progreso Stikers: solo si hay sorteo -->
+      <!-- Progreso Stikers: solo si hay sorteo (porcentaje) -->
       <div *ngIf="principal" class="progress-container">
         <p class="progress-text">
-          <strong>{{ soldStikers }}</strong> / {{ totalStikers }} stikers vendidos
+          <strong>{{ progressPercent | number:'1.1-1' }}%</strong> vendido
         </p>
 
         <div class="progress-bar">

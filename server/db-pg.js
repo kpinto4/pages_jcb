@@ -51,8 +51,11 @@ async function query(sql, params = []) {
 
 function runPg(sql, params) {
   const isInsert = sql.trim().toUpperCase().startsWith('INSERT');
+  const hasReturningId = /RETURNING\s+/i.test(sql);
+  const isUpsert = /ON\s+CONFLICT/i.test(sql);
   let runSql = sql;
-  if (isInsert && !/RETURNING\s+/i.test(sql)) {
+  // Solo añadir RETURNING id si es INSERT y la tabla tiene columna id (evitar tablas como config que solo tienen key/value)
+  if (isInsert && !hasReturningId && !isUpsert) {
     runSql = sql.replace(/;\s*$/, '') + ' RETURNING id';
   }
   return query(runSql, params).then(res => {
@@ -112,8 +115,9 @@ export const dbPg = {
               },
               run: async (...p) => {
                 const isInsert = sql.trim().toUpperCase().startsWith('INSERT');
+                const isUpsert = /ON\s+CONFLICT/i.test(sql);
                 let runSql = sql;
-                if (isInsert && !/RETURNING\s+/i.test(sql)) runSql = sql.replace(/;\s*$/, '') + ' RETURNING id';
+                if (isInsert && !/RETURNING\s+/i.test(sql) && !isUpsert) runSql = sql.replace(/;\s*$/, '') + ' RETURNING id';
                 const { sql: pgSql, params } = toPgParams(runSql, p);
                 const res = await client.query(pgSql, params);
                 const id = isInsert && res.rows?.[0] ? res.rows[0].id : 0;
@@ -132,8 +136,9 @@ export const dbPg = {
           },
           run: async (s, ...p) => {
             const isInsert = s.trim().toUpperCase().startsWith('INSERT');
+            const isUpsert = /ON\s+CONFLICT/i.test(s);
             let runSql = s;
-            if (isInsert && !/RETURNING\s+/i.test(s)) runSql = s.replace(/;\s*$/, '') + ' RETURNING id';
+            if (isInsert && !/RETURNING\s+/i.test(s) && !isUpsert) runSql = s.replace(/;\s*$/, '') + ' RETURNING id';
             const { sql: pgSql, params } = toPgParams(runSql, p);
             const res = await client.query(pgSql, params);
             const id = isInsert && res.rows?.[0] ? res.rows[0].id : 0;
@@ -143,6 +148,20 @@ export const dbPg = {
           exec: async (execSql) => {
             const statements = execSql.split(';').map(x => x.trim()).filter(Boolean);
             for (const st of statements) await client.query(st);
+          },
+          /** Inserta muchas filas en una sola query. sql = INSERT INTO t (a,b) VALUES (?, ?). rows = [[a1,b1],[a2,b2],...] */
+          runBatch: async (sql, rows) => {
+            if (!rows.length) return;
+            const placeholdersPerRow = (sql.match(/\?/g) || []).length;
+            const batchSize = 200;
+            for (let off = 0; off < rows.length; off += batchSize) {
+              const chunk = rows.slice(off, off + batchSize);
+              const values = chunk.flat();
+              let idx = 0;
+              const rowPlaces = chunk.map(() => '(' + Array(placeholdersPerRow).fill(0).map(() => `$${++idx}`).join(',') + ')').join(',');
+              const baseSql = sql.replace(/\s+VALUES\s+\([^)]*\).*$/i, '');
+              await client.query(baseSql + ' VALUES ' + rowPlaces, values);
+            }
           }
         };
         const result = await fn(txDb);

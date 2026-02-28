@@ -5,17 +5,30 @@
 
   <div class="cards" *ngIf="!loading && sorteos.length > 0">
     <div class="card" *ngFor="let s of sorteos" [class.realizado]="s.estado === 'realizado'">
-      <img [src]="s.imagen_url || ('assets/img/anticipado' + ((s.id % 3) || 1) + '.jpg')" [alt]="s.nombre">
+      <div class="card-img-wrap">
+        <img
+          [src]="s.imagen_url || 'assets/img/premio-mayor.jpg'"
+          [alt]="s.ganador_nombre ? ('Foto del ganador: ' + s.ganador_nombre) : s.nombre"
+          class="card-img"
+          (error)="onImgError($event)"
+        >
+        <span *ngIf="s.imagen_url" class="card-img-label">Foto del ganador</span>
+      </div>
       <div class="info">
         <h3>{{ s.nombre }}</h3>
         <p *ngIf="s.premio_descripcion" class="premio-texto">{{ s.premio_descripcion }}</p>
         <p *ngIf="!s.premio_descripcion">{{ s.descripcion || 'Premio mayor del juego.' }}</p>
         <span class="fecha">Fecha: {{ formatDate(s.fecha) }}</span>
         <span class="estado-badge realizado">Realizado</span>
-        <p *ngIf="s.numero_ganador_a" class="ganador">
-          Ganador: {{ s.numero_ganador_a }} - {{ s.numero_ganador_b }}
-        </p>
-        <p *ngIf="!s.numero_ganador_a" class="ganador">Sin números vendidos.</p>
+        <div class="ganador-info" *ngIf="s.numero_ganador_a">
+          <p class="ganador-numero">
+            <strong>Stiker ganador:</strong> {{ s.numero_ganador_a }} — {{ s.numero_ganador_b }}
+          </p>
+          <p class="ganador-nombre" *ngIf="s.ganador_nombre">
+            <strong>Ganador:</strong> {{ s.ganador_nombre }}
+          </p>
+        </div>
+        <p *ngIf="!s.numero_ganador_a" class="sin-ganador">Sin números vendidos.</p>
       </div>
     </div>
   </div>

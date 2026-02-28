@@ -60,12 +60,12 @@
         <span class="stat-label">Órdenes pagadas</span>
       </div>
       <div class="stat-card">
-        <span class="stat-value">{{ stats.totalStikersSold }}</span>
-        <span class="stat-label">Stikers vendidos</span>
+        <span class="stat-value">{{ stats.totalStikersSold }} / {{ stats.totalStikers }}</span>
+        <span class="stat-label">Stikers vendidos / disponibles</span>
       </div>
       <div class="stat-card">
-        <span class="stat-value">${{ formatCents(stats.totalRevenueCents) }}</span>
-        <span class="stat-label">Ingresos totales</span>
+        <span class="stat-value">{{ formatCents(stats.totalRevenueCents) }}</span>
+        <span class="stat-label">Ingresos totales ({{ config.currency.toUpperCase() }})</span>
       </div>
     </div>
     <p *ngIf="!loading && !stats" class="muted">No hay datos o el backend no está disponible.</p>
@@ -152,7 +152,7 @@
     <!-- Sorteos activos (programados) primero -->
     <h4 class="sorteos-section-title">Sorteos activos</h4>
     <div class="sorteos-list">
-      <div *ngFor="let s of sorteosActivos" class="sorteo-card" [class.anticipado]="s.sorteo_mayor_id">
+      <div *ngFor="let s of sorteosActivos; trackBy: trackBySorteoId" class="sorteo-card" [class.anticipado]="s.sorteo_mayor_id">
         <div class="sorteo-info" *ngIf="editSorteoId !== s.id">
           <strong>{{ s.nombre }}</strong>
           <span class="sorteo-fecha">{{ formatDate(s.fecha) }}</span>
@@ -187,6 +187,15 @@
         <div class="sorteo-actions">
           <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
           <button
+            type="button"
+            class="btn-danger"
+            *ngIf="editSorteoId !== s.id"
+            [disabled]="eliminandoSorteoId === s.id"
+            (click)="eliminarSorteo(s); $event.stopPropagation()"
+          >
+            {{ eliminandoSorteoId === s.id ? 'Eliminando...' : 'Eliminar' }}
+          </button>
+          <button
             *ngIf="(s.tipo || '').toLowerCase() === 'mayor'"
             type="button"
             class="btn-realizar"
@@ -202,7 +211,7 @@
     <!-- Sorteos terminados: un ítem por campaña (premio mayor + número ganador + números bendecidos) -->
     <h4 class="sorteos-section-title">Sorteos terminados</h4>
     <div class="sorteos-list sorteos-terminados">
-      <div *ngFor="let grupo of terminadosAgrupados" class="sorteo-card sorteo-card-terminado">
+      <div *ngFor="let grupo of terminadosAgrupados; trackBy: trackByGrupoId" class="sorteo-card sorteo-card-terminado">
         <div class="sorteo-info">
           <strong>{{ grupo.mayor.nombre }}</strong>
           <span class="sorteo-fecha">{{ formatDate(grupo.mayor.fecha) }}</span>
@@ -212,11 +221,45 @@
           <p class="bendecidos-block" *ngIf="grupo.anticipados.length > 0">
             <strong>Números bendecidos:</strong>
             <span class="bendecidos-list">
-              <ng-container *ngFor="let a of grupo.anticipados; let last = last">
+              <ng-container *ngFor="let a of grupo.anticipados; trackBy: trackBySorteoId; let last = last">
                 {{ a.numeros_beneficiados || ('Anticipado ' + a.id) }}<span *ngIf="!last">, </span>
               </ng-container>
             </span>
           </p>
+        </div>
+
+        <!-- Edición rápida de imagen para el home (foto del ganador) -->
+        <div class="edit-form" *ngIf="editSorteoId === grupo.mayor.id">
+          <div class="form-row">
+            <label style="font-size:0.85rem;margin-bottom:4px;display:block;">Selecciona la foto del ganador</label>
+            <input
+              type="file"
+              accept="image/*"
+              (change)="onFotoFileChange($event, grupo.mayor.id)">
+            <span *ngIf="fotoGanadorFiles[grupo.mayor.id]" class="muted" style="font-size:0.8rem;margin-top:4px;display:block;">
+              {{ fotoGanadorFiles[grupo.mayor.id].name }}
+            </span>
+          </div>
+          <div class="edit-actions">
+            <button
+              type="button"
+              class="btn-primary"
+              [disabled]="guardandoEditId === grupo.mayor.id || !fotoGanadorFiles[grupo.mayor.id]"
+              (click)="guardarFotoGanador(grupo.mayor.id)">
+              {{ guardandoEditId === grupo.mayor.id ? 'Subiendo...' : 'Guardar imagen' }}
+            </button>
+            <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="sorteo-actions sorteo-actions-terminado">
+          <button
+            type="button"
+            class="btn-edit"
+            *ngIf="editSorteoId !== grupo.mayor.id"
+            (click)="editarSorteo(grupo.mayor)">
+            Cambiar foto del ganador
+          </button>
         </div>
       </div>
     </div>
@@ -281,11 +324,23 @@
     <p class="muted">Precio por stiker y moneda que verán los clientes en Comprar Stikers.</p>
     <div class="config-form">
       <div class="form-row">
-        <label>Precio por stiker</label>
-        <input type="number" step="1" min="0" [(ngModel)]="config.precioStikerDollars" [attr.placeholder]="config.currency === 'cop' ? '500000 (COP)' : '50 (USD)'">
+        <label>
+          Precio por stiker
+          <span class="muted small">(en {{ config.currency.toUpperCase() }}, ej. {{ config.currency === 'cop' ? '5000' : config.currency === 'usd' ? '5' : '5' }})</span>
+        </label>
+        <input
+          type="number"
+          step="1"
+          min="0"
+          [(ngModel)]="config.precioStikerUnidad"
+          [placeholder]="config.currency === 'cop' ? '5000' : '5'">
+        <small class="field-hint">
+          Ingresa el precio en la moneda seleccionada (no en centavos).
+          {{ config.currency === 'cop' ? 'Ej: 5000 = $5.000 COP por stiker.' : 'Ej: 5 = $5.00 USD por stiker.' }}
+        </small>
       </div>
       <div class="form-row">
-        <label>Moneda (Stripe)</label>
+        <label>Moneda</label>
         <select [(ngModel)]="config.currency">
           <option value="cop">COP (Colombia)</option>
           <option value="usd">USD</option>
@@ -299,10 +354,24 @@
       <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
 
       <div class="reset-stikers-box">
-        <h4>Stikers (5000 stikers = 10000 números)</h4>
-        <p class="muted">Si solo aparecen 300 stikers y el cliente no encuentra su número, reinicia para generar los 5000.</p>
-        <button type="button" class="btn-realizar" [disabled]="resettingStikers" (click)="reiniciarStikerSlots()">
-          {{ resettingStikers ? 'Reiniciando...' : 'Reiniciar stikers a 5000' }}
+        <h4>Mantenimiento de stikers</h4>
+        <p class="muted">
+          <strong>Limpiar pendientes expirados:</strong> libera los slots bloqueados por checkouts abandonados (más de 2 horas sin pago).
+          Ejecuta esto si hay stikers que no se pueden comprar sin razón aparente.
+        </p>
+        <button type="button" class="btn-realizar" [disabled]="limpiandoPendientes" (click)="limpiarPendientes()">
+          {{ limpiandoPendientes ? 'Limpiando...' : 'Limpiar slots pendientes expirados' }}
+        </button>
+        <span *ngIf="pendientesLimpiados !== null" class="config-ok">
+          {{ pendientesLimpiados }} órdenes expiradas liberadas.
+        </span>
+
+        <p class="muted" style="margin-top: 1rem;">
+          <strong>Reiniciar todos los stikers a 5000:</strong> borra los slots actuales y crea 5000 nuevos pares de números.
+          Solo usar si los stikers están completamente corrompidos.
+        </p>
+        <button type="button" class="btn-danger" [disabled]="resettingStikers" (click)="reiniciarStikerSlots()">
+          {{ resettingStikers ? 'Reiniciando...' : 'Reiniciar stikers a 5000 (destructivo)' }}
         </button>
       </div>
     </div>

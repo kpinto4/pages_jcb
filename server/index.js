@@ -1,15 +1,13 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import Stripe from 'stripe';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { initDb } from './db-adapter.js';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -27,16 +25,11 @@ function toJSONSafe(obj) {
   return obj;
 }
 
-// En Vercel el filesystem es de solo lectura; usar /tmp para uploads
-let uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (process.env.VERCEL) {
-  uploadsDir = path.join(os.tmpdir(), 'uploads');
-}
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 } catch (e) {
-  uploadsDir = path.join(os.tmpdir(), 'uploads');
-  try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (_) {}
+  console.warn('No se pudo crear uploadsDir:', e.message);
 }
 
 let db;
@@ -68,24 +61,68 @@ if (db && process.env.DATABASE_URL) {
     console.warn('Seed stiker_slots:', e.message);
   }
 }
+// Auto-limpieza de órdenes pendientes expiradas al arrancar (se ejecuta una vez al inicio y cada hora)
+async function scheduleCleanup() {
+  if (!db) return;
+  try {
+    const n = await limpiarPendientesExpirados(120);
+    if (n > 0) console.log(`Auto-limpieza al arrancar: ${n} órdenes pendientes expiradas liberadas.`);
+  } catch (e) {
+    console.warn('Auto-limpieza pendientes:', e.message);
+  }
+  // Repetir cada hora
+  setTimeout(scheduleCleanup, 60 * 60 * 1000);
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
-const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
-const adminPassword = process.env.ADMIN_PASSWORD || '';
-const rawJwt = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || '';
-const jwtSecret = (rawJwt && String(rawJwt).trim()) ? String(rawJwt).trim() : (adminPassword.trim() || 'change-me-in-production');
-// Sin restricción de longitud para JWT_SECRET: cualquier valor no vacío (o ADMIN_PASSWORD) vale.
+
+// ----- Wompi (Colombia) — única pasarela de pago -----
+const wompiPublicKey = (process.env.WOMPI_PUBLIC_KEY || '').trim();
+const wompiIntegritySecret = (process.env.WOMPI_INTEGRITY_SECRET || '').trim();
+const wompiEventsSecret = (process.env.WOMPI_EVENTS_SECRET || '').trim();
+const wompiCheckoutUrl = (process.env.WOMPI_CHECKOUT_URL || 'https://checkout.wompi.co/p/').trim();
+/** Si definido, se usa esta URL como redirect. Si no, cuando successUrl sea localhost usamos la de Wompi para evitar 403. */
+const wompiRedirectOverride = (process.env.WOMPI_REDIRECT_URL_OVERRIDE || '').trim();
+/** URL pública del frontend (ej. tu ngrok del puerto 4200). Si la defines, al pagar desde localhost Wompi redirigirá aquí en lugar de a la página de Wompi. */
+const wompiSuccessUrlOverride = (process.env.WOMPI_SUCCESS_URL || '').trim();
+const wompiRedirectFallback = 'https://transaction-redirect.wompi.co/check';
+const wompiEnabled = !!(wompiPublicKey && wompiIntegritySecret);
+
+/** Firma de integridad Wompi (Colombia): SHA256(Reference + Amount + Currency + IntegritySecret). Orden exacto según docs. */
+function wompiSignature(reference, amountInCents, currency) {
+  const amountStr = String(Math.round(Number(amountInCents)));
+  const str = `${reference}${amountStr}${currency}${wompiIntegritySecret}`;
+  return createHash('sha256').update(str).digest('hex');
+}
+// ----- Acceso admin (obligatorio) -----
+const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
+const rawJwt = (process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || '').trim();
+const jwtSecret = rawJwt || adminPassword || '';
+const jwtSecretFinal = jwtSecret || 'change-me-in-production';
+
+if (process.env.NODE_ENV === 'production') {
+  if (!adminPassword) {
+    console.error('ADMIN_PASSWORD es obligatoria en producción. Define ADMIN_PASSWORD en server/.env');
+    process.exit(1);
+  }
+  if (!jwtSecret || jwtSecret === 'change-me-in-production') {
+    console.error('JWT_SECRET o ADMIN_PASSWORD deben estar definidos en server/.env para las sesiones de admin.');
+    process.exit(1);
+  }
+} else {
+  if (!adminPassword) console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
+  if (!jwtSecret || jwtSecret === 'change-me-in-production') console.warn('⚠️  JWT_SECRET no definido. Se usará fallback; define JWT_SECRET en .env para producción.');
+}
 const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
-app.use(cors({ origin: true, credentials: true }));
-// Webhook debe leer body raw antes de que express.json lo parsee
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+// CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
+const corsOrigin = process.env.ALLOWED_ORIGIN || true;
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
-// Si la DB no cargó (ej. en Vercel), solo permitir health y admin/login
+// Si la DB no cargó, solo permitir health y admin/login
 app.use((req, res, next) => {
   if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
     return res.status(503).json({
@@ -97,20 +134,17 @@ app.use((req, res, next) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-// Multer: en Vercel usamos memoryStorage (luego subimos a Blob); local usamos disk
-const storage = process.env.VERCEL
-  ? multer.memoryStorage()
-  : multer.diskStorage({
-      destination: (req, file, cb) => cb(null, uploadsDir),
-      filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
-    });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
+});
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-// ----- HEALTH (para comprobar en Vercel que la API y env vars responden) -----
+// ----- HEALTH -----
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    stripe: !!process.env.STRIPE_SECRET_KEY,
+    wompi: wompiEnabled,
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
     dbConnected: !!db,
@@ -124,16 +158,20 @@ app.post('/api/admin/login', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const password = (typeof body.password === 'string' ? body.password : String(body.password || '')).trim();
-    const expectedPassword = (adminPassword || '').trim();
-    if (!expectedPassword) {
-      return res.status(503).json({ error: 'Admin no configurado. Define ADMIN_PASSWORD en .env' });
+
+    if (!adminPassword) {
+      return res.status(503).json({ error: 'Admin no configurado. Define ADMIN_PASSWORD en server/.env' });
     }
-    if (!password || password !== expectedPassword) {
+    if (!password) {
+      return res.status(400).json({ error: 'Falta la contraseña' });
+    }
+    if (password !== adminPassword) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
+
     const token = jwt.sign(
       { sub: 'admin', role: 'admin' },
-      jwtSecret,
+      jwtSecretFinal,
       { expiresIn: '24h' }
     );
     res.json({ token });
@@ -143,55 +181,88 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
-// Middleware: proteger todas las rutas /api/admin/* excepto login
+// Middleware: proteger todas las rutas /api/admin/* excepto POST /api/admin/login
 function adminAuthMiddleware(req, res, next) {
   if (req.path === '/login' && req.method === 'POST') return next();
 
   const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
   if (!token) {
-    return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
+    return res.status(401).json({ error: 'No autorizado. Inicia sesión en /admin' });
   }
 
   try {
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, jwtSecretFinal);
     req.admin = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Sesión expirada o inválida. Vuelve a iniciar sesión.' });
+    const message = err?.name === 'TokenExpiredError'
+      ? 'Sesión expirada. Vuelve a iniciar sesión.'
+      : 'Sesión inválida. Vuelve a iniciar sesión.';
+    return res.status(401).json({ error: message });
   }
 }
 
 app.use('/api/admin', adminAuthMiddleware);
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', upload.single('image'), async (req, res) => {
+app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-
-    let url;
-    if (process.env.VERCEL) {
-      if (!process.env.BLOB_READ_WRITE_TOKEN) {
-        return res.status(503).json({
-          error: 'BLOB_READ_WRITE_TOKEN no configurado. Crea un Blob Store en Vercel → Storage y añade el token.'
-        });
-      }
-      const { put } = await import('@vercel/blob');
-      const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase();
-      const blob = await put(`premios/${randomUUID()}${ext}`, req.file.buffer, {
-        access: 'public',
-        addRandomSuffix: false
-      });
-      url = blob.url;
-    } else {
-      const baseUrl = req.protocol + '://' + req.get('host');
-      url = baseUrl + '/uploads/' + req.file.filename;
-    }
+    const baseUrl = req.protocol + '://' + req.get('host');
+    const url = baseUrl + '/uploads/' + req.file.filename;
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);
     res.status(500).json({ error: err.message || 'Error al subir imagen' });
+  }
+});
+
+// ----- ADMIN: limpiar órdenes pendientes expiradas y liberar sus stiker_slots -----
+
+/**
+ * Libera los stiker_slots bloqueados por órdenes 'pending' con más de `ageMinutes` minutos de antigüedad.
+ * Retorna la cantidad de órdenes expiradas procesadas.
+ */
+async function limpiarPendientesExpirados(ageMinutes = 120) {
+  const cutoff = new Date(Date.now() - ageMinutes * 60 * 1000).toISOString();
+  // Contar cuántas órdenes serán afectadas antes de modificar
+  const countRow = await db.prepare(
+    `SELECT COUNT(*) AS n FROM orders WHERE status = 'pending' AND created_at < ?`
+  ).get(cutoff);
+  const n = Number(countRow?.n ?? 0);
+  if (n === 0) return 0;
+  // Liberar stiker_slots de esas órdenes
+  await db.prepare(`
+    UPDATE stiker_slots SET order_id = NULL
+    WHERE order_id IN (
+      SELECT id FROM orders WHERE status = 'pending' AND created_at < ?
+    )
+  `).run(cutoff);
+  // Eliminar order_items de esas órdenes
+  await db.prepare(`
+    DELETE FROM order_items
+    WHERE order_id IN (
+      SELECT id FROM orders WHERE status = 'pending' AND created_at < ?
+    )
+  `).run(cutoff);
+  // Marcar las órdenes como 'expired' para no perder el historial
+  await db.prepare(
+    `UPDATE orders SET status = 'expired' WHERE status = 'pending' AND created_at < ?`
+  ).run(cutoff);
+  return n;
+}
+
+app.post('/api/admin/limpiar-pendientes', async (req, res) => {
+  try {
+    const ageMinutes = Math.max(30, parseInt(req.query.minutes, 10) || 120);
+    const n = await limpiarPendientesExpirados(ageMinutes);
+    console.log(`Limpieza de pendientes: ${n} órdenes expiradas liberadas.`);
+    res.json({ ok: true, expiradas: n, ageMinutes });
+  } catch (err) {
+    console.error('Error POST /api/admin/limpiar-pendientes:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -234,11 +305,16 @@ app.get('/api/stikers', async (req, res) => {
     }
 
     const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 5000);
+    // Un slot se considera "ocupado" solo si su orden está pagada.
+    // Las órdenes pendientes/abandonadas no bloquean la vista del slot.
     const rows = await db.prepare(`
-      SELECT id, numero_a as numeroA, numero_b as numeroB,
-             CASE WHEN order_id IS NOT NULL THEN 'ocupado' ELSE 'libre' END as estado
-      FROM stiker_slots
-      ORDER BY id
+      SELECT ss.id,
+             ss.numero_a AS "numeroA",
+             ss.numero_b AS "numeroB",
+             CASE WHEN ss.order_id IS NOT NULL AND o.status = 'paid' THEN 'ocupado' ELSE 'libre' END AS estado
+      FROM stiker_slots ss
+      LEFT JOIN orders o ON o.id = ss.order_id
+      ORDER BY ss.id
       LIMIT ?
     `).all(limit);
 
@@ -287,7 +363,7 @@ app.get('/api/verificar-stikers', async (req, res) => {
   }
 });
 
-// ----- CHECKOUT (crear sesión Stripe y reservar stikers) -----
+// ----- CHECKOUT (Wompi: reservar stikers y devolver URL de checkout) -----
 
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
@@ -315,9 +391,9 @@ app.post('/api/create-checkout-session', async (req, res) => {
       });
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return res.status(500).json({
-        error: 'STRIPE_SECRET_KEY no configurada. Revisa el archivo .env del servidor.'
+    if (!wompiEnabled) {
+      return res.status(503).json({
+        error: 'Pagos con tarjeta en mantenimiento. Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET), o usa "Simular pago" para pruebas.'
       });
     }
 
@@ -372,94 +448,151 @@ app.post('/api/create-checkout-session', async (req, res) => {
       `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), sorteoMayorId);
     }
 
-    const sessionConfig = {
-      mode: 'payment',
-      payment_method_types: ['card'],
-      customer_email: customerEmail,
-      client_reference_id: orderId,
-      line_items: lineItems && lineItems.length > 0
-        ? lineItems.map((item) => ({
-            price_data: {
-              currency: currency.toLowerCase(),
-              product_data: {
-                name: item.name || 'Stiker Ciudad Bonita',
-                description: item.description,
-                images: item.image ? [item.image] : undefined
-              },
-              unit_amount: Math.round(item.unit_amount)
-            },
-            quantity: item.quantity || 1
-          }))
-        : [{
-            price_data: {
-              currency: currency.toLowerCase(),
-              product_data: {
-                name: 'Stikers - Juego de la Ciudad Bonita',
-                description: metadata.stikersDetail || 'Compra de stikers'
-              },
-              unit_amount: Math.round(amount)
-            },
-            quantity: 1
-          }],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        ...metadata,
-        customerName: nombre,
-        orderId
-      }
-    };
-
-    const session = await stripe.checkout.sessions.create(sessionConfig);
-
-    await db.prepare(`
-      UPDATE orders SET stripe_session_id = ? WHERE id = ?
-    `).run(session.id, orderId);
-
-    res.json({ url: session.url, sessionId: session.id });
+    // ----- Wompi: Web Checkout (redirect) -----
+    const amountInCents = Math.round(Number(amount));
+    const currencyWompi = (currency || 'cop').toLowerCase() === 'cop' ? 'COP' : 'COP';
+    const reference = orderId;
+    const signature = wompiSignature(reference, amountInCents, currencyWompi);
+    let redirectUrl = (successUrl || '').replace(/\{CHECKOUT_SESSION_ID\}/g, orderId);
+    if (wompiRedirectOverride) {
+      redirectUrl = wompiRedirectOverride;
+    } else if (/localhost|127\.0\.0\.1/i.test(redirectUrl)) {
+      redirectUrl = wompiSuccessUrlOverride
+        ? wompiSuccessUrlOverride.replace(/\{CHECKOUT_SESSION_ID\}/g, orderId)
+        : wompiRedirectFallback;
+    }
+    const params = new URLSearchParams({
+      'public-key': wompiPublicKey,
+      currency: currencyWompi,
+      'amount-in-cents': String(amountInCents),
+      reference,
+      'signature:integrity': signature,
+      'redirect-url': redirectUrl
+    });
+    if (customerEmail) params.set('customer-data:email', customerEmail);
+    if (nombre) params.set('customer-data:full-name', nombre);
+    const checkoutUrl = `${wompiCheckoutUrl}?${params.toString()}`;
+    return res.json({ provider: 'wompi', checkoutUrl, sessionId: orderId });
   } catch (err) {
-    console.error('Error creando sesión Stripe:', err);
+    console.error('Error creando sesión de pago:', err);
     res.status(500).json({
       error: err.message || 'Error al crear la sesión de pago'
     });
   }
 });
 
-// ----- SESIÓN (detalle tras pago) -----
+// ----- SIMULAR PAGO (pruebas: registra orden pagada sin pasarela) -----
+app.post('/api/simulate-payment', async (req, res) => {
+  try {
+    if (!(await hayPremioMayorActivo())) {
+      return res.status(400).json({
+        error: 'No hay sorteo activo. Las compras de stikers están cerradas.'
+      });
+    }
+
+    const {
+      amount,
+      currency = 'cop',
+      customerEmail,
+      customerName,
+      metadata = {},
+      selectedStikers = []
+    } = req.body;
+
+    if (!amount || amount <= 0 || !customerEmail || !selectedStikers.length) {
+      return res.status(400).json({
+        error: 'Faltan campos requeridos: amount, customerEmail, selectedStikers (al menos uno).'
+      });
+    }
+
+    const orderId = randomUUID();
+    const cedula = (metadata.cedula || '').trim();
+    const nombre = (customerName || '').trim() || 'Cliente';
+    const telefono = (metadata.telefono || '').trim();
+
+    const params = selectedStikers.flatMap(s => [s.numeroA, s.numeroB]);
+    const placeholders = selectedStikers.map(() => '(?, ?)').join(', ');
+    const slots = await db.prepare(`
+      SELECT id, numero_a, numero_b, order_id
+      FROM stiker_slots
+      WHERE (numero_a, numero_b) IN (${placeholders})
+    `).all(...params);
+
+    const ocupados = slots.filter(s => s.order_id != null);
+    if (ocupados.length > 0) {
+      return res.status(409).json({
+        error: 'Algunos stikers ya no están disponibles. Actualiza la página y elige de nuevo.'
+      });
+    }
+
+    const sorteoMayorId = await getPremioMayorActivoId();
+    const runTx = db.transaction(async (tx) => {
+      await tx.prepare(`
+        INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+      `).run(orderId, cedula, nombre, customerEmail, telefono, Math.round(Number(amount)), (currency || 'cop').toLowerCase(), sorteoMayorId);
+
+      const insertItem = tx.prepare(`
+        INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
+      `);
+      for (const s of selectedStikers) {
+        await insertItem.run(orderId, s.numeroA, s.numeroB);
+      }
+
+      const updateSlot = tx.prepare(`
+        UPDATE stiker_slots SET order_id = ? WHERE numero_a = ? AND numero_b = ?
+      `);
+      for (const s of selectedStikers) {
+        await updateSlot.run(orderId, s.numeroA, s.numeroB);
+      }
+    });
+    await runTx();
+    await registrarBeneficiosAnticipados(orderId);
+
+    res.json({ sessionId: orderId, ok: true });
+  } catch (err) {
+    console.error('Error simulate-payment:', err);
+    res.status(500).json({ error: err.message || 'Error al simular el pago' });
+  }
+});
+
+// ----- SESIÓN (detalle tras pago Wompi por orderId) -----
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 app.get('/api/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return res.status(500).json({ error: 'Stripe no configurado' });
+    if (!UUID_REGEX.test(sessionId)) {
+      return res.status(404).json({ error: 'Sesión no encontrada. Solo se admite pago con Wompi.' });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['line_items']
-    });
-
-    if (session.payment_status !== 'paid') {
-      return res.status(400).json({ error: 'La sesión no está pagada' });
+    const order = await db.prepare('SELECT id, email, nombre, total_cents, currency, status FROM orders WHERE id = ?').get(sessionId);
+    if (!order) {
+      return res.status(404).json({ error: 'Orden no encontrada' });
     }
 
-    const orderId = session.metadata?.orderId;
-    let stikersDetail = session.metadata?.stikersDetail || '';
-    if (orderId) {
-      await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
-      await registrarBeneficiosAnticipados(orderId);
-      const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
-      if (items.length > 0) {
-        stikersDetail = items.map(i => `${i.numero_a} - ${i.numero_b}`).join(', ');
-      }
+    if (order.status !== 'paid') {
+      return res.status(200).json({
+        id: order.id,
+        status: 'pending',
+        customer_email: order.email,
+        amount_total: Number(order.total_cents),
+        currency: order.currency,
+        metadata: {}
+      });
     }
 
-    res.json({
-      id: session.id,
-      customer_email: session.customer_details?.email,
-      amount_total: session.amount_total,
-      currency: session.currency,
-      metadata: { ...session.metadata, stikersDetail }
+    let stikersDetail = '';
+    const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(sessionId);
+    if (items.length > 0) stikersDetail = items.map(i => `${i.numero_a} - ${i.numero_b}`).join(', ');
+    return res.json({
+      id: order.id,
+      customer_email: order.email,
+      amount_total: Number(order.total_cents),
+      currency: order.currency,
+      metadata: { customerName: order.nombre || '', stikersDetail }
     });
   } catch (err) {
     console.error('Error obteniendo sesión:', err);
@@ -467,37 +600,52 @@ app.get('/api/session/:sessionId', async (req, res) => {
   }
 });
 
-// ----- WEBHOOK STRIPE -----
+// ----- WEBHOOK WOMPI (transaction.updated) -----
 
-app.post('/api/webhooks/stripe', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
+app.post('/api/webhooks/wompi', async (req, res) => {
+  const body = req.body;
+  if (!body || body.event !== 'transaction.updated' || !body.data?.transaction) {
+    return res.sendStatus(200);
+  }
+  const transaction = body.data.transaction;
+  if (transaction.status !== 'APPROVED') {
+    return res.sendStatus(200);
+  }
+  const reference = transaction.reference;
+  if (!reference) return res.sendStatus(200);
+
+  if (wompiEventsSecret) {
+    const checksum = req.headers['x-event-checksum'] || body.signature?.checksum;
+    if (!checksum) {
+      console.warn('Webhook Wompi: sin checksum');
+      return res.status(400).send('Missing signature');
+    }
+    const props = body.signature?.properties || [];
+    // Wompi: las propiedades son rutas dot-notation sobre el objeto RAÍZ del evento (body), no solo body.data
+    const values = props.map((p) => {
+      const parts = p.split('.');
+      let v = body;
+      for (const k of parts) v = v?.[k];
+      return String(v ?? '');
+    });
+    const concat = values.join('') + String(body.timestamp || '') + wompiEventsSecret;
+    const computed = createHash('sha256').update(concat).digest('hex').toUpperCase();
+    if (computed !== String(checksum).toUpperCase()) {
+      console.warn('Webhook Wompi: checksum inválido. Esperado:', computed, 'Recibido:', String(checksum).toUpperCase());
+      return res.status(400).send('Invalid signature');
+    }
+  }
 
   try {
-    if (stripe && stripeWebhookSecret) {
-      event = stripe.webhooks.constructEvent(req.body, sig, stripeWebhookSecret);
-    } else {
-      event = req.body;
-    }
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    const order = await db.prepare('SELECT id, status FROM orders WHERE id = ?').get(reference);
+    if (!order || order.status === 'paid') return res.sendStatus(200);
+    await db.prepare(`UPDATE orders SET status = 'paid', payment_reference = ?, stripe_session_id = ? WHERE id = ?`).run(transaction.id, transaction.id, reference);
+    await registrarBeneficiosAnticipados(reference);
+    console.log('Wompi: orden marcada como pagada:', reference);
+  } catch (e) {
+    console.error('Webhook Wompi:', e?.message || e);
+    return res.status(500).send('Error');
   }
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const orderId = session.metadata?.orderId;
-    if (orderId) {
-      try {
-        await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(orderId);
-        await registrarBeneficiosAnticipados(orderId);
-        console.log('Orden marcada como pagada:', orderId);
-      } catch (e) {
-        console.error('Error actualizando orden:', e);
-      }
-    }
-  }
-
   res.sendStatus(200);
 });
 
@@ -551,15 +699,19 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const totalOrders = await db.prepare("SELECT COUNT(*) as n FROM orders WHERE status = 'paid'").get();
-    const totalStikersSold = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
+    const totalStikersSold = await db.prepare(`
+      SELECT COUNT(*) as n
+      FROM stiker_slots ss
+      JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
+    `).get();
     const totalStikers = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
     const totalRevenue = await db.prepare("SELECT COALESCE(SUM(total_cents), 0) as n FROM orders WHERE status = 'paid'").get();
-    res.json({
-      totalOrders: totalOrders.n,
-      totalStikersSold: totalStikersSold.n,
-      totalStikers: totalStikers.n,
-      totalRevenueCents: totalRevenue.n
-    });
+    res.json(toJSONSafe({
+      totalOrders: Number(totalOrders?.n ?? 0),
+      totalStikersSold: Number(totalStikersSold?.n ?? 0),
+      totalStikers: Number(totalStikers?.n ?? 0),
+      totalRevenueCents: Number(totalRevenue?.n ?? 0)
+    }));
   } catch (err) {
     console.error('Error GET /api/admin/stats:', err);
     res.status(500).json({ error: err.message });
@@ -713,14 +865,14 @@ app.get('/api/sorteos/home', async (req, res) => {
       FROM sorteos
       WHERE tipo = 'mayor' AND estado = 'realizado'
       ORDER BY fecha DESC
-      LIMIT 10
+      LIMIT 6
     `).all();
 
-    res.json({
+    res.json(toJSONSafe({
       principal: principal || null,
       anticipadosActuales,
       mayoresRealizados
-    });
+    }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);
     res.status(500).json({ error: err.message });
@@ -753,11 +905,16 @@ function shuffleArray(arr) {
 
 /** Inserta 5000 stiker_slots: cada número 0000-9999 aparece exactamente una vez; en cada par los dos números son distintos. */
 async function fillStikerSlots5000(txOrDb = db) {
-  const insertSlot = txOrDb.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
   const nums = Array.from({ length: 10000 }, (_, i) => i.toString().padStart(4, '0'));
   shuffleArray(nums);
+  const rows = Array.from({ length: 5000 }, (_, i) => [nums[2 * i], nums[2 * i + 1]]);
+  if (typeof txOrDb.runBatch === 'function') {
+    await txOrDb.runBatch('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)', rows);
+    return;
+  }
+  const insertSlot = txOrDb.prepare('INSERT INTO stiker_slots (numero_a, numero_b) VALUES (?, ?)');
   for (let i = 0; i < 5000; i++) {
-    await insertSlot.run(nums[2 * i], nums[2 * i + 1]);
+    await insertSlot.run(rows[i][0], rows[i][1]);
   }
 }
 
@@ -872,7 +1029,9 @@ app.post('/api/admin/sorteos', async (req, res) => {
         (tipo !== 'mayor' && numeros_beneficiados) ? String(numeros_beneficiados).trim() || null : null
       );
       const mayorId = result.lastInsertRowid;
+      if (!mayorId) throw new Error('No se obtuvo el id del sorteo creado');
       const row = await tx.prepare('SELECT * FROM sorteos WHERE id = ?').get(mayorId);
+      if (!row) throw new Error('Sorteo creado pero no se pudo leer (id ' + mayorId + ')');
 
       if (tipo === 'mayor') {
         await tx.exec('DELETE FROM beneficios_anticipados;');
@@ -903,7 +1062,7 @@ app.post('/api/admin/sorteos', async (req, res) => {
     res.status(201).json(toJSONSafe(row));
   } catch (err) {
     console.error('Error POST /api/admin/sorteos:', err);
-    const msg = (err && (err.message || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al crear el sorteo';
+    const msg = (err && (err.message || err.code || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al crear el sorteo';
     if (!res.headersSent) res.status(500).json({ error: String(msg) });
   }
 });
@@ -933,7 +1092,44 @@ app.patch('/api/admin/sorteos/:id', async (req, res) => {
     res.json(toJSONSafe(row));
   } catch (err) {
     console.error('Error PATCH /api/admin/sorteos/:id:', err);
-    res.status(500).json({ error: err.message });
+    const msg = (err && (err.message || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al actualizar el sorteo';
+    if (!res.headersSent) res.status(500).json({ error: String(msg) });
+  }
+});
+
+app.delete('/api/admin/sorteos/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const current = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
+    if (!current) return res.status(404).json({ error: 'Sorteo no encontrado' });
+
+    if (current.estado === 'realizado') {
+      return res.status(400).json({ error: 'No se puede eliminar un sorteo ya realizado.' });
+    }
+
+    if ((current.tipo || '').toLowerCase() === 'mayor') {
+      const ordenes = await db.prepare('SELECT COUNT(*) AS n FROM orders WHERE sorteo_mayor_id = ?').get(id);
+      if (Number(ordenes?.n || 0) > 0) {
+        return res.status(400).json({ error: 'No se puede eliminar un Premio Mayor que ya tiene ventas asociadas.' });
+      }
+
+      // Borrar anticipados de la campaña y luego el premio mayor
+      await db.prepare('DELETE FROM sorteos WHERE sorteo_mayor_id = ?').run(id);
+      await db.prepare('DELETE FROM sorteos WHERE id = ?').run(id);
+      return res.json({ ok: true });
+    }
+
+    const usadosComoBenef = await db.prepare('SELECT COUNT(*) AS n FROM beneficios_anticipados WHERE sorteo_id = ?').get(id);
+    if (Number(usadosComoBenef?.n || 0) > 0) {
+      return res.status(400).json({ error: 'Este sorteo tiene beneficios registrados y no se puede eliminar.' });
+    }
+
+    await db.prepare('DELETE FROM sorteos WHERE id = ?').run(id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error DELETE /api/admin/sorteos/:id:', err);
+    const msg = (err && (err.message || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al eliminar el sorteo';
+    if (!res.headersSent) res.status(500).json({ error: String(msg) });
   }
 });
 
@@ -1065,7 +1261,7 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
     if (!resultado) {
       const { existe, pagado } = await existeStikerConNumero(numero_ganador);
       const error = existe && !pagado
-        ? 'Hay una venta con ese número pero la orden no está marcada como pagada. Confirma el pago en Stripe o espera el webhook.'
+        ? 'Hay una venta con ese número pero la orden no está marcada como pagada. Confirma el pago en Wompi o espera el webhook.'
         : 'No hay ningún comprador con ese número. Extiende la fecha del sorteo para dar más posibilidades de ganar.';
       return res.status(400).json({ code: 'no_ganador', error });
     }
@@ -1095,8 +1291,9 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
       await db.prepare(`UPDATE sorteos SET estado = 'realizado' WHERE sorteo_mayor_id = ?`).run(id);
       await db.exec('DELETE FROM beneficios_anticipados;');
       await db.exec('DELETE FROM order_items;');
-      await db.exec('DELETE FROM orders;');
+      // Primero liberar los stiker_slots para no violar la FK stiker_slots.order_id -> orders.id
       await db.exec('DELETE FROM stiker_slots;');
+      await db.exec('DELETE FROM orders;');
       await fillStikerSlots5000();
       console.log('Nueva campaña: ventas, stikers y anticipados reiniciados después del Premio Mayor.');
     }
@@ -1113,32 +1310,34 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
 
 app.get('/api/progreso', async (req, res) => {
   try {
-    const totalStikersSold = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots WHERE order_id IS NOT NULL').get();
+    // Solo contar stikers cuya orden esté efectivamente pagada (evita inflar el progreso con checkouts abandonados)
+    const totalStikersSold = await db.prepare(`
+      SELECT COUNT(*) as n
+      FROM stiker_slots ss
+      JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
+    `).get();
     const totalStikers = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
-    res.json({
-      totalStikersSold: totalStikersSold.n,
-      totalStikers: totalStikers.n
-    });
+    res.json(toJSONSafe({
+      totalStikersSold: Number(totalStikersSold?.n ?? 0),
+      totalStikers: Number(totalStikers?.n ?? 0)
+    }));
   } catch (err) {
     console.error('Error GET /api/progreso:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// En Vercel no hacemos listen; exportamos la app para el serverless handler
-if (!process.env.VERCEL) {
-  app.listen(port, () => {
-    console.log(`Servidor en http://localhost:${port}`);
-    if (!process.env.STRIPE_SECRET_KEY) {
-      console.warn('⚠️  STRIPE_SECRET_KEY no definida. Crea server/.env con tu clave.');
-    }
-    if (!stripeWebhookSecret) {
-      console.warn('⚠️  STRIPE_WEBHOOK_SECRET no definida. Los webhooks no verificarán firma.');
-    }
-    if (!adminPassword) {
-      console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
-    }
-  });
-}
+app.listen(port, () => {
+  console.log(`Servidor en http://localhost:${port}`);
+  if (!wompiEnabled) {
+    console.warn('⚠️  Wompi no configurado. Define WOMPI_PUBLIC_KEY y WOMPI_INTEGRITY_SECRET en server/.env para pagos con tarjeta, o usa "Simular pago".');
+  } else {
+    console.log('💳 Wompi activo' + (wompiPublicKey.startsWith('pub_test_') ? ' (sandbox)' : ' (producción)'));
+  }
+  if (!adminPassword) {
+    console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
+  }
+  setTimeout(scheduleCleanup, 5000);
+});
 
 export default app;

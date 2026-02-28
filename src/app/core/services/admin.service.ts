@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 export interface AdminStats {
   totalOrders: number;
   totalStikersSold: number;
+  totalStikers: number;
   totalRevenueCents: number;
 }
 
@@ -126,7 +127,7 @@ export class AdminService {
 
   updateSorteo(id: number, body: Partial<{ nombre: string; fecha: string; descripcion: string; premio_descripcion: string; imagen_url: string; numeros_beneficiados: string }>): Observable<Sorteo | null> {
     return this.http.patch<Sorteo>(`${this.base}/api/admin/sorteos/${id}`, body).pipe(
-      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+      catchError((err) => throwError(() => err))
     );
   }
 
@@ -153,6 +154,18 @@ export class AdminService {
   resetStikerSlots(): Observable<{ ok: boolean; total: number } | null> {
     return this.http.post<{ ok: boolean; total: number }>(`${this.base}/api/admin/reset-stiker-slots`, {}).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  limpiarPendientes(): Observable<{ ok: boolean; expiradas: number; ageMinutes: number } | null> {
+    return this.http.post<{ ok: boolean; expiradas: number; ageMinutes: number }>(`${this.base}/api/admin/limpiar-pendientes`, {}).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  deleteSorteo(id: number): Observable<{ ok: boolean } | null> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/api/admin/sorteos/${id}`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
   }
 

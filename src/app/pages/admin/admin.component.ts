@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject, takeUntil } from 'rxjs';
 import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
@@ -37,18 +38,24 @@ export class AdminComponent implements OnInit, OnDestroy {
   imagenFile: File | null = null;
   guardandoSorteo = false;
   realizandoId: number | null = null;
+  eliminandoSorteoId: number | null = null;
 
   editSorteoId: number | null = null;
   editForm: { nombre: string; fecha: string; premio_descripcion: string; numeros_beneficiados: string; imagen_url: string } = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
   guardandoEditId: number | null = null;
+  /** Archivos de foto seleccionados por sorteo terminado (key = sorteo id) */
+  fotoGanadorFiles: { [id: number]: File } = {};
 
   config = {
-    precioStikerDollars: 50,
+    /** Precio por stiker en unidades de la moneda (COP, USD, etc.), no en centavos */
+    precioStikerUnidad: 5000,
     currency: 'cop'
   };
   guardandoConfig = false;
   configGuardada = false;
   resettingStikers = false;
+  limpiandoPendientes = false;
+  pendientesLimpiados: number | null = null;
 
   ganadorActual: SorteoGanadorResponse | null = null;
 
@@ -67,6 +74,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   revisandoBeneficios = false;
   private beneficiosPollingId: ReturnType<typeof setInterval> | null = null;
   private readonly BENEFICIOS_POLL_MS = 10000;
+  private readonly destroy$ = new Subject<void>();
 
   constructor(
     private adminService: AdminService,
@@ -84,6 +92,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
     this.stopBeneficiosPolling();
   }
 
@@ -117,7 +127,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       return;
     }
     this.loginLoading = true;
-    this.auth.login(this.password).subscribe({
+    this.auth.login(this.password).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
         this.loginLoading = false;
         if (res?.token) {
@@ -131,13 +141,11 @@ export class AdminComponent implements OnInit, OnDestroy {
             this.cargarBeneficios();
             this.startBeneficiosPolling();
           }
-        } else {
-          this.loginError = 'Contraseña incorrecta o backend no disponible.';
         }
       },
-      error: () => {
+      error: (err: { status?: number; message?: string }) => {
         this.loginLoading = false;
-        this.loginError = 'Contraseña incorrecta o backend no disponible.';
+        this.loginError = err?.message || 'Contraseña incorrecta o backend no disponible.';
       }
     });
   }
@@ -152,10 +160,11 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   cargarConfig(): void {
-    this.adminService.getConfig().subscribe({
+    this.adminService.getConfig().pipe(takeUntil(this.destroy$)).subscribe({
       next: (c) => {
         if (c?.precio_stiker_cents) {
-          this.config.precioStikerDollars = parseInt(c.precio_stiker_cents, 10) / 100;
+          // El backend guarda centavos; mostramos en unidades (÷ 100)
+          this.config.precioStikerUnidad = parseInt(c.precio_stiker_cents, 10) / 100;
         }
         if (c?.currency) this.config.currency = c.currency;
       },
@@ -169,9 +178,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.guardandoConfig = true;
     this.configGuardada = false;
     this.adminService.updateConfig({
-      precioStikerCents: Math.round(this.config.precioStikerDollars * 100),
+      precioStikerCents: Math.round(this.config.precioStikerUnidad * 100),
       currency: this.config.currency
-    }).subscribe({
+    }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.guardandoConfig = false;
         this.configGuardada = true;
@@ -186,7 +195,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   cargarStats(): void {
     this.loading = true;
-    this.adminService.getStats().subscribe({
+    this.adminService.getStats().pipe(takeUntil(this.destroy$)).subscribe({
       next: (s) => {
         this.stats = s;
         this.loading = false;
@@ -200,7 +209,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   cargarOrders(): void {
-    this.adminService.getOrders().subscribe({
+    this.adminService.getOrders().pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
         this.orders = r?.orders ?? [];
       },
@@ -213,7 +222,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   confirmarEfectivo(o: AdminOrder): void {
     if (o.status === 'paid') return;
     this.confirmandoId = o.id;
-    this.adminService.confirmCashOrder(o.id).subscribe({
+    this.adminService.confirmCashOrder(o.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: (updated) => {
         if (updated) {
           this.orders = this.orders.map(ord => ord.id === updated.id ? updated : ord);
@@ -228,7 +237,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   cargarSorteos(): void {
-    this.adminService.getSorteos().subscribe({
+    this.adminService.getSorteos().pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
         this.sorteos = r?.sorteos ?? [];
       },
@@ -261,7 +270,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   cargarBeneficios(): void {
-    this.adminService.getBeneficios().subscribe({
+    this.adminService.getBeneficios().pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
         this.beneficios = r?.beneficios ?? [];
       },
@@ -273,7 +282,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   revisarBeneficios(): void {
     this.revisandoBeneficios = true;
-    this.adminService.revisarBeneficios().subscribe({
+    this.adminService.revisarBeneficios().pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
         this.revisandoBeneficios = false;
         if (r?.ok) {
@@ -320,7 +329,7 @@ export class AdminComponent implements OnInit, OnDestroy {
         tipo: 'mayor',
         premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined,
         imagen_url: url
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: (s) => {
           this.guardandoSorteo = false;
           if (s) {
@@ -348,7 +357,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (imagenUrl) {
       doCreate(imagenUrl);
     } else if (this.imagenFile) {
-      this.adminService.uploadImage(this.imagenFile).subscribe({
+      this.adminService.uploadImage(this.imagenFile).pipe(takeUntil(this.destroy$)).subscribe({
         next: (res) => {
           if (res?.url) doCreate(res.url);
           else {
@@ -385,7 +394,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       numeros_beneficiados: this.editForm.numeros_beneficiados.trim() || undefined,
       imagen_url: this.editForm.imagen_url.trim() || undefined
     };
-    this.adminService.updateSorteo(this.editSorteoId, body).subscribe({
+    this.adminService.updateSorteo(this.editSorteoId, body).pipe(takeUntil(this.destroy$)).subscribe({
       next: (updated) => {
         if (updated) {
           this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
@@ -396,6 +405,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         if (err?.status === 401) this.on401();
         this.guardandoEditId = null;
+        this.error = err?.error?.error || err?.message || 'No se pudo guardar el sorteo.';
       }
     });
   }
@@ -403,12 +413,76 @@ export class AdminComponent implements OnInit, OnDestroy {
   cancelarEdicion(): void {
     this.editSorteoId = null;
     this.editForm = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
+    this.fotoGanadorFiles = {};
+  }
+
+  onFotoFileChange(event: Event, id: number): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      this.fotoGanadorFiles = { ...this.fotoGanadorFiles, [id]: input.files[0] };
+    }
+  }
+
+  guardarFotoGanador(id: number): void {
+    const file = this.fotoGanadorFiles[id];
+    if (!file) {
+      this.error = 'Selecciona una imagen antes de guardar.';
+      return;
+    }
+    this.guardandoEditId = id;
+    this.error = '';
+
+    this.adminService.uploadImage(file).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        if (!res?.url) {
+          this.error = 'No se pudo subir la imagen. Intenta de nuevo.';
+          this.guardandoEditId = null;
+          return;
+        }
+        this.adminService.updateSorteo(id, { imagen_url: res.url }).pipe(takeUntil(this.destroy$)).subscribe({
+          next: (updated) => {
+            if (updated) {
+              this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
+            }
+            this.cancelarEdicion();
+            this.guardandoEditId = null;
+          },
+          error: (err) => {
+            if (err?.status === 401) this.on401();
+            this.guardandoEditId = null;
+            this.error = err?.error?.error || err?.message || 'No se pudo guardar la imagen.';
+          }
+        });
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.guardandoEditId = null;
+        this.error = 'Error al subir la imagen. Intenta de nuevo.';
+      }
+    });
+  }
+
+  limpiarPendientes(): void {
+    this.limpiandoPendientes = true;
+    this.pendientesLimpiados = null;
+    this.adminService.limpiarPendientes().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        this.limpiandoPendientes = false;
+        this.pendientesLimpiados = res?.expiradas ?? 0;
+        setTimeout(() => (this.pendientesLimpiados = null), 5000);
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.limpiandoPendientes = false;
+        this.error = 'No se pudo limpiar los pendientes.';
+      }
+    });
   }
 
   reiniciarStikerSlots(): void {
     if (!confirm('Se borrarán todos los stikers actuales y se crearán 5000 nuevos (10000 números). Las ventas ya hechas siguen en el sistema pero la grilla de Comprar Stikers mostrará los nuevos. ¿Continuar?')) return;
     this.resettingStikers = true;
-    this.adminService.resetStikerSlots().subscribe({
+    this.adminService.resetStikerSlots().pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
         this.resettingStikers = false;
         if (res?.ok) this.error = ''; else this.error = 'No se pudo reiniciar.';
@@ -416,6 +490,41 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         if (err?.status === 401) this.on401();
         this.resettingStikers = false;
+      }
+    });
+  }
+
+  eliminarSorteo(s: Sorteo): void {
+    if (s.estado === 'realizado') {
+      this.error = 'No se puede eliminar un sorteo ya realizado.';
+      return;
+    }
+    const esMayor = (s.tipo || '').toLowerCase() === 'mayor';
+    const msg = esMayor
+      ? 'Vas a eliminar este Premio Mayor y todos sus anticipados enlazados. Solo se permite si no hay ventas asociadas. ¿Continuar?'
+      : 'Vas a eliminar este sorteo. ¿Continuar?';
+    if (!confirm(msg)) return;
+
+    this.eliminandoSorteoId = s.id;
+    this.adminService.deleteSorteo(s.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        if (esMayor) {
+          this.sorteos = this.sorteos.filter((x) => x.id !== s.id && x.sorteo_mayor_id !== s.id);
+        } else {
+          this.sorteos = this.sorteos.filter((x) => x.id !== s.id);
+        }
+        this.eliminandoSorteoId = null;
+        this.error = '';
+      },
+      error: (err) => {
+        if (err?.status === 401) {
+          this.on401();
+        } else {
+          const e = err?.error;
+          const msgErr = typeof e === 'string' ? e : (e?.error ?? e?.message ?? 'No se pudo eliminar el sorteo.');
+          this.error = typeof msgErr === 'string' ? msgErr : 'No se pudo eliminar el sorteo.';
+        }
+        this.eliminandoSorteoId = null;
       }
     });
   }
@@ -454,14 +563,14 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.errorRealizar = '';
     this.consultandoGanador = true;
     this.stikerGanadorConsultado = null;
-    this.adminService.consultarGanador(this.sorteoParaRealizar.id, num).subscribe({
+    this.adminService.consultarGanador(this.sorteoParaRealizar.id, num).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
         this.consultandoGanador = false;
         this.ganadorConsultado = res?.ganador ?? null;
         this.stikerGanadorConsultado = res?.stiker_ganador ?? null;
         if (!this.ganadorConsultado) {
           this.errorRealizar = res?.existe_sin_pagar
-            ? 'Hay una venta con ese número pero la orden no está marcada como pagada. Confirma el pago en Stripe o espera el webhook.'
+            ? 'Hay una venta con ese número pero la orden no está marcada como pagada. Confirma el pago en Wompi o espera el webhook.'
             : 'No hay comprador con un stiker que contenga ese número. Puedes extender la fecha del sorteo para dar más posibilidades.';
           this.showExtenderFecha = !res?.existe_sin_pagar;
         }
@@ -482,7 +591,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
     this.errorRealizar = '';
     this.realizandoId = this.sorteoParaRealizar.id;
-    this.adminService.realizarSorteo(this.sorteoParaRealizar.id, num).subscribe({
+    this.adminService.realizarSorteo(this.sorteoParaRealizar.id, num).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
         this.ganadorActual = res ?? null;
         this.realizandoId = null;
@@ -511,15 +620,42 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   formatCents(cents: number): string {
-    return (cents / 100).toFixed(2);
+    const value = cents / 100;
+    const mon = (this.config.currency || 'cop').toLowerCase();
+    try {
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: mon.toUpperCase(),
+        minimumFractionDigits: mon === 'cop' ? 0 : 2,
+        maximumFractionDigits: mon === 'cop' ? 0 : 2
+      }).format(value);
+    } catch {
+      return value.toLocaleString('es-CO');
+    }
   }
 
   formatDate(s: string): string {
     if (!s) return '-';
     try {
-      return new Date(s).toLocaleDateString('es');
+      // Normalizar "YYYY-MM-DD" para evitar bug UTC off-by-one en zonas horarias negativas
+      const normalized = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T12:00:00` : s;
+      return new Date(normalized).toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
     } catch {
       return s;
     }
+  }
+
+  /** trackBy para *ngFor de sorteos individuales (activos y anticipados dentro de grupos) */
+  trackBySorteoId(_: number, s: Sorteo): number {
+    return s.id;
+  }
+
+  /** trackBy para *ngFor de grupos terminados — evita recrear el DOM cuando el getter devuelve nuevos wrappers */
+  trackByGrupoId(_: number, g: { mayor: Sorteo; anticipados: Sorteo[] }): number {
+    return g.mayor.id;
   }
 }

@@ -132,8 +132,9 @@
         <input id="nombre" type="text" placeholder="Ej. Juan Pérez" [(ngModel)]="cliente.nombre" name="nombre">
       </div>
       <div class="form-group">
-        <label for="cedula">Cédula</label>
-        <input id="cedula" type="text" placeholder="Ej. 1234567890" [(ngModel)]="cliente.cedula" name="cedula">
+        <label for="cedula">Cédula <span class="required">*</span></label>
+        <input id="cedula" type="text" placeholder="Ej. 1234567890" [(ngModel)]="cliente.cedula" name="cedula" required>
+        <small class="field-hint">Necesaria para verificar tu compra después.</small>
       </div>
       <div class="form-group">
         <label for="telefono">Teléfono</label>
@@ -160,30 +161,47 @@
     </p>
 
     <p>Total a pagar</p>
-    <strong>${{ total }} {{ currency === 'usd' ? 'USD' : currency.toUpperCase() }}</strong>
+    <strong class="total-amount">{{ formatearPrecio(total, currency) }}</strong>
 
     <p class="error-msg" *ngIf="errorPago">{{ errorPago }}</p>
 
     <div *ngIf="procesandoPago" class="loader">
-      Redirigiendo a la pasarela de pago...
+      {{ verificandoVueltaPago ? 'Verificando tu pago...' : 'Redirigiendo a la pasarela de pago...' }}
     </div>
 
     <div *ngIf="!procesandoPago" class="acciones">
       <button type="button" class="btn-outline" (click)="prevStep()">Volver</button>
       <button type="button" class="btn-primary" (click)="irAPagar()">
-        Pagar con tarjeta (Stripe)
+        Pagar con tarjeta
       </button>
       <button type="button" class="btn-demo" (click)="simularPago()">
-        Simular pago (demo)
+        Simular pago (pruebas)
       </button>
     </div>
   </div>
 
-  <!-- PASO 4 -->
-  <div *ngIf="step === 4 && successData" class="panel confirmacion">
-    <h3>Compra exitosa 🎉</h3>
+  <!-- PASO 4: verificando pago (volvimos de Wompi, consultando estado) -->
+  <div *ngIf="step === 4 && verificandoVueltaPago" class="panel confirmacion confirmacion-pendiente">
+    <h3>Verificando tu pago</h3>
+    <p class="loader">Un momento, estamos confirmando con el servidor...</p>
+  </div>
 
-    <p *ngIf="successData.customerName">Gracias <strong>{{ successData.customerName }}</strong></p>
+  <!-- PASO 4: pago en verificación (webhook aún no llegó) -->
+  <div *ngIf="step === 4 && !verificandoVueltaPago && pagoEnVerificacion" class="panel confirmacion confirmacion-pendiente">
+    <h3>Pago recibido — verificando</h3>
+    <p>Tu pago fue enviado pero aún está siendo confirmado por el banco. Esto puede tardar unos minutos.</p>
+    <p>Puedes verificar el estado de tu compra en <strong>Verificar Stiker</strong> usando tu número de cédula.</p>
+    <div class="acciones-finales">
+      <a routerLink="/" class="btn-outline">Volver al inicio</a>
+      <a routerLink="/verificar-stiker" class="btn-primary">Verificar mi stiker</a>
+    </div>
+  </div>
+
+  <!-- PASO 4: pago exitoso -->
+  <div *ngIf="step === 4 && !verificandoVueltaPago && !pagoEnVerificacion && successData" class="panel confirmacion">
+    <h3>¡Compra exitosa!</h3>
+
+    <p *ngIf="successData.customerName">Gracias, <strong>{{ successData.customerName }}</strong></p>
     <p *ngIf="successData.customerEmail && !successData.customerName">
       Se enviará la confirmación a <strong>{{ successData.customerEmail }}</strong>
     </p>
@@ -197,11 +215,11 @@
       <li *ngFor="let s of seleccionados">{{ s.numeroA }} - {{ s.numeroB }}</li>
     </ul>
 
-    <p class="total">Total pagado: ${{ successData.amountTotal }}</p>
+    <p class="total">Total pagado: {{ formatearPrecio(successData.amountTotal, currency) }}</p>
 
     <div class="acciones-finales">
       <a routerLink="/" class="btn-outline">Volver al inicio</a>
-      <button type="button" class="btn-primary" (click)="step = 1; successData = null">Comprar más</button>
+      <button type="button" class="btn-primary" (click)="step = 1; successData = null; pagoEnVerificacion = false">Comprar más</button>
     </div>
   </div>
 

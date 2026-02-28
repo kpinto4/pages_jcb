@@ -1,68 +1,33 @@
-# Guía: Pasarela de pago (Stripe)
+# Guía: Pasarela de pago
 
-Esta guía explica cómo poner en marcha la pasarela de pago del **Juego de la Ciudad Bonita** y qué necesitas para que sea funcional en desarrollo y en producción.
-
----
-
-## Resumen del flujo
-
-1. El usuario selecciona stikers, introduce sus datos y pulsa **"Pagar con tarjeta (Stripe)"**.
-2. El frontend (Angular) envía los datos del pedido al **backend** (Node/Express en la carpeta `server/`).
-3. El backend crea una **sesión de Stripe Checkout** y devuelve una URL.
-4. El usuario es **redirigido** a la página de pago de Stripe (tarjeta, etc.).
-5. Tras pagar, Stripe redirige de vuelta a tu app a `/comprar-stikers?success=true&session_id=...`.
-6. La app muestra la página de **éxito** y, opcionalmente, obtiene los detalles de la sesión desde el backend.
+Esta guía explica el flujo de pago del **Juego de la Ciudad Bonita**. Actualmente **Stripe está en pausa**; se usará **Wompi** para pagos con tarjeta en Colombia. Mientras tanto, en la pantalla de pago está disponible **"Simular pago (pruebas)"** para probar el flujo sin pasarela real.
 
 ---
 
-## Qué necesitas
+## Resumen del flujo (cuando la pasarela esté activa)
 
-### 1. Cuenta en Stripe
+1. El usuario selecciona stikers, introduce sus datos y pulsa **"Pagar con tarjeta"** (próximamente Wompi).
+2. El frontend envía los datos del pedido al **backend** (Node/Express en `server/`).
+3. El backend crea la sesión con la pasarela y devuelve una URL (o redirección).
+4. Tras pagar, la app muestra la página de **éxito** y los detalles desde el backend.
 
-- Regístrate en [Stripe](https://stripe.com).
-- En el [Dashboard](https://dashboard.stripe.com) entra en **Developers → API keys**.
-- Usa las claves de **test** para desarrollo:
-  - **Secret key** (empieza por `sk_test_...`): solo en el backend, **nunca** en el frontend.
-  - **Publishable key** (opcional para este flujo): si más adelante usas Stripe.js en el frontend.
+---
 
-### 2. Backend (servidor Node)
+## Qué necesitas (para cuando integres Wompi)
 
-La pasarela depende de un backend que:
-
-- Reciba el pedido desde Angular.
-- Cree la sesión de Checkout con la **Secret key** de Stripe.
-- Devuelva la URL de pago y, opcionalmente, los detalles de la sesión para la página de éxito.
-
-En este proyecto el backend está en la carpeta **`server/`**.
+- Cuenta en [Wompi](https://wompi.co) y llaves de **Sandbox** para pruebas.
+- En el backend: variables de entorno con las credenciales de Wompi (cuando se implemente).
+- El backend en `server/` ya tiene las rutas `POST /api/create-checkout-session` y `GET /api/session/:sessionId`; sin Stripe configurado responden 503 y la app muestra "Simular pago" para pruebas.
 
 ---
 
 ## Implementación paso a paso
 
-### Paso 1: Configurar el backend (servidor de pago)
+### Paso 1: Backend (servidor de pago)
 
-1. Entra en la carpeta del servidor:
-   ```bash
-   cd server
-   ```
-
-2. Instala dependencias:
-   ```bash
-   npm install
-   ```
-
-3. Crea el archivo de entorno con tu clave secreta de Stripe:
-   ```bash
-   cp .env.example .env
-   ```
-   Edita `server/.env` y rellena:
-   ```env
-   PORT=3000
-   <!-- STRIPE_SECRET_KEY -->
-   ```
-   Sustituye `sk_test_...` por tu **Secret key** de Stripe (modo test).
-
-4. Arranca el servidor:
+1. En `server/` configura `.env` con `DATABASE_URL` (PostgreSQL), `ADMIN_PASSWORD`, etc. (ver `server/.env.example`).
+2. Opcional: si quieres usar Stripe de nuevo, define `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en `.env`. Si no, el botón "Pagar con tarjeta" mostrará mensaje de mantenimiento y podrás usar **"Simular pago (pruebas)"**.
+3. Arranca el servidor:
    ```bash
    npm start
    ```
@@ -85,25 +50,12 @@ En este proyecto el backend está en la carpeta **`server/`**.
      paymentApiUrl: 'https://api.tudominio.com'
      ```
 
-3. Arranca la app Angular:
-   ```bash
-   ng serve
-   ```
-   Abre `http://localhost:4200`, ve a **Comprar stikers**, completa los pasos y en el paso de pago usa **"Pagar con tarjeta (Stripe)"**.
+3. Arranca la app Angular (`ng serve`). Abre `http://localhost:4200`, ve a **Comprar stikers** y en el paso de pago usa **"Simular pago (pruebas)"** para probar sin pasarela real.
 
-### Paso 3: Probar el pago (modo test)
+### Probar el pago (ahora y con Wompi)
 
-1. Con el backend en `http://localhost:3000` y Angular en `http://localhost:4200`:
-   - Selecciona stikers, datos del comprador y en el paso 3 pulsa **"Pagar con tarjeta (Stripe)"**.
-   - Deberías ser redirigido a Stripe Checkout.
-
-2. En **test**, Stripe acepta tarjetas de prueba, por ejemplo:
-   - Número: `4242 4242 4242 4242`
-   - Fecha: cualquier fecha futura
-   - CVC: cualquier 3 dígitos
-   - Más tarjetas: [Stripe - Tarjetas de prueba](https://stripe.com/docs/testing#cards)
-
-3. Tras completar el pago, Stripe te redirige a tu app y se muestra la página de éxito.
+- **Ahora:** Usa **"Simular pago (pruebas)"** para completar el flujo y ver la pantalla de éxito sin cobro real.
+- **Con Wompi (Sandbox):** Cuando integres Wompi, en pruebas podrás usar tarjetas como `4242 4242 4242 4242` (aprobado) o `4111 1111 1111 1111` (declinado). Ver [Wompi - Datos de prueba](https://docs.wompi.co/docs/colombia/datos-de-prueba-en-sandbox/).
 
 ---
 
@@ -133,7 +85,7 @@ pages_jcb/
 
 ## Endpoints del backend
 
-El backend usa **SQLite** (`server/data.db`) para órdenes, ítems y stikers. Al arrancar crea las tablas y rellena ~300 stikers si la base está vacía.
+El backend usa **PostgreSQL** para órdenes, ítems y stikers. El esquema está en `server/schema-supabase.sql`. Si `stiker_slots` está vacía, al crear un Premio Mayor se rellenan 5000 stikers.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
@@ -165,15 +117,14 @@ El backend usa **SQLite** (`server/data.db`) para órdenes, ítems y stikers. Al
    - En `src/environments/environment.prod.ts` pon la URL pública de tu backend en `paymentApiUrl`.
    - Genera el build: `ng build --configuration production`.
 
-4. **Stripe en vivo**
-   - En el Dashboard de Stripe cambia a **modo live** y usa las claves `sk_live_...` y `pk_live_...` donde corresponda.
-   - Configura **Webhooks** si en el futuro quieres confirmar pagos o actualizar estado en tu base de datos al recibir eventos de Stripe.
+4. **Pasarela en producción**  
+   Cuando integres **Wompi** (u otra pasarela), configura las credenciales en `server/.env` y adapta las rutas de checkout/sesión en el backend si es necesario.
 
 ---
 
-## Botón "Simular pago (demo)"
+## Botón "Simular pago (pruebas)"
 
-Si no tienes el backend encendido o no quieres usar Stripe en ese momento, en el paso de pago puedes usar **"Simular pago (demo)"**. No se hace ninguna llamada a Stripe ni al backend; la app simula el éxito y muestra la pantalla de confirmación. Úsalo solo para pruebas de interfaz.
+En el paso de pago puedes usar **"Simular pago (pruebas)"** para completar el flujo sin pasarela real. No se crea orden en el backend ni se cobra; la app muestra la pantalla de éxito. Úsalo para pruebas de interfaz y flujo mientras la pasarela (Wompi) no esté integrada.
 
 ---
 
@@ -182,8 +133,8 @@ Si no tienes el backend encendido o no quieres usar Stripe en ese momento, en el
 - **"No se pudo conectar con el servidor de pago"**  
   Comprueba que el backend esté corriendo en la URL configurada en `environment.paymentApiUrl` y que no haya firewall bloqueando (por ejemplo, que `http://localhost:3000` sea accesible desde el navegador o desde la app).
 
-- **"STRIPE_SECRET_KEY no configurada"**  
-  Crea `server/.env` desde `server/.env.example` y asigna tu clave secreta de Stripe.
+- **"Pagos con tarjeta en mantenimiento"**  
+  El backend no tiene pasarela configurada (Stripe en pausa). Usa **"Simular pago (pruebas)"** o configura Wompi cuando esté integrado.
 
 - **CORS**  
   Si la petición desde Angular falla por CORS, revisa que el backend permita el origen de tu frontend (en desarrollo, `http://localhost:4200`).

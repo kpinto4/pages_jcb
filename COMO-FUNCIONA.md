@@ -7,7 +7,7 @@ Guía del proyecto **Juego de la Ciudad Bonita**: qué hace cada parte y cómo s
 ## 1. Resumen del proyecto
 
 - **Frontend:** aplicación Angular (SPA) que muestra la web del juego: inicio, premios, compra de stikers, verificación de stikers y panel de administración.
-- **Backend:** servidor Node.js + Express que guarda datos en SQLite, crea pagos con Stripe y protege las rutas de admin con login (JWT).
+- **Backend:** servidor Node.js + Express que usa **PostgreSQL** para los datos, protege las rutas de admin con login (JWT) y tendrá pasarela de pago (próximamente Wompi; Stripe en pausa).
 - **Comunicación:** el frontend llama al backend por HTTP (la URL se configura en `src/environments/environment.ts`; en desarrollo suele ser `http://localhost:3000`).
 
 ---
@@ -17,14 +17,14 @@ Guía del proyecto **Juego de la Ciudad Bonita**: qué hace cada parte y cómo s
 ### 2.1 Tecnologías
 
 - **Node.js** + **Express**
-- **SQLite** (better-sqlite3), archivo `server/data.db`
-- **Stripe** (pagos)
+- **PostgreSQL** (obligatorio; ej. Neon, Supabase). Esquema en `server/schema-supabase.sql`.
 - **JWT** (jsonwebtoken) para el login del admin
+- Pasarela de pago: en pausa (Stripe desactivado; se migrará a Wompi). Mientras tanto se usa "Simular pago".
 - Variables de entorno en `server/.env` (ver `server/.env.example`)
 
-### 2.2 Base de datos (SQLite)
+### 2.2 Base de datos (PostgreSQL)
 
-Archivo: `server/data.db` (se crea al iniciar si no existe).
+Se usa **solo PostgreSQL**. La URL se configura en `DATABASE_URL`. Ejecuta `server/schema-supabase.sql` en tu base para crear las tablas.
 
 | Tabla | Uso |
 |-------|-----|
@@ -34,7 +34,7 @@ Archivo: `server/data.db` (se crea al iniciar si no existe).
 | **sorteos** | Sorteos: nombre, fecha, descripcion, tipo (anticipado/mayor), estado (programado/realizado), premio_descripcion, numero_ganador_a/b. |
 | **config** | Clave-valor: precio_stiker_cents, currency, etc. |
 
-Al arrancar el servidor se ejecutan migraciones y seeds (por ejemplo 300 stikers y sorteos por defecto si las tablas están vacías).
+Si la tabla `stiker_slots` está vacía, el servidor puede crear 5000 stikers al arrancar (según configuración).
 
 ### 2.3 Rutas del backend
 
@@ -47,9 +47,9 @@ Al arrancar el servidor se ejecutan migraciones y seeds (por ejemplo 300 stikers
 | GET | `/api/config` | Precio por stiker (centavos) y moneda para la tienda. |
 | GET | `/api/sorteos` | Lista de sorteos (para la sección Premios). |
 | GET | `/api/sorteos/:id` | Detalle de un sorteo. |
-| POST | `/api/create-checkout-session` | Crea sesión Stripe Checkout, reserva stikers y crea orden en pending. Body: amount, customerEmail, selectedStikers, metadata, successUrl, cancelUrl. |
-| GET | `/api/session/:sessionId` | Detalles de una sesión de pago completada. |
-| POST | `/api/webhooks/stripe` | Webhook Stripe: al recibir `checkout.session.completed` marca la orden como paid. |
+| POST | `/api/create-checkout-session` | Crea sesión de pago (si Stripe está configurado; si no, responde 503; próximamente Wompi). |
+| GET | `/api/session/:sessionId` | Detalles de una sesión de pago completada (cuando la pasarela está activa). |
+| POST | `/api/webhooks/stripe` | Webhook Stripe (cuando está configurado). |
 | GET | `/api/health` | Estado del servidor. |
 | POST | `/api/admin/login` | Login admin: body `{ "password": "..." }`. Si coincide con ADMIN_PASSWORD devuelve `{ "token": "JWT..." }`. |
 
@@ -69,7 +69,7 @@ El middleware de admin comprueba el JWT en todas las rutas bajo `/api/admin` exc
 
 ### 2.4 Flujos importantes en el backend
 
-- **Compra:** El frontend envía a `POST /api/create-checkout-session` los stikers elegidos y datos del cliente. El backend comprueba que esos stikers estén libres, crea la orden (pending), inserta en `order_items`, actualiza `stiker_slots` con el `order_id`, crea la sesión en Stripe y devuelve la URL. Cuando el usuario paga, Stripe redirige a la web y opcionalmente llama al webhook; el webhook pone la orden en `paid`.
+- **Compra:** El frontend puede usar "Simular pago" (sin pasarela) o, cuando esté configurada la pasarela (Wompi), enviar a `POST /api/create-checkout-session`. El backend reserva stikers y crea la orden; la pasarela confirma el pago y se marca la orden como `paid`.
 - **Verificar stiker:** `GET /api/verificar-stikers?cedula=XXX` busca órdenes por cédula y para cada una los ítems en `order_items`; devuelve lista de stikers con codigo, numero1, numero2, pagado (según status de la orden).
 - **Sorteos:** Los sorteos se listan con `GET /api/sorteos`. Al “realizar” un sorteo (`POST .../realizar`) se elige al azar un ítem entre los de órdenes pagadas y se guarda como ganador en ese sorteo.
 
@@ -78,9 +78,11 @@ El middleware de admin comprueba el JWT en todas las rutas bajo `/api/admin` exc
 | Archivo | Función |
 |---------|---------|
 | `server/index.js` | Express: CORS, login, middleware admin, todas las rutas (stikers, verificar-stikers, config, checkout, session, webhook, admin). |
-| `server/db.js` | Conexión SQLite, creación de tablas, migraciones, seeds (stikers, sorteos, config). |
-| `server/.env` | Variables: PORT, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ADMIN_PASSWORD, JWT_SECRET, SQLITE_PATH. |
-| `server/package.json` | Dependencias: express, cors, stripe, better-sqlite3, jsonwebtoken, dotenv. |
+| `server/db-adapter.js` | Punto de entrada de base de datos (solo PostgreSQL). |
+| `server/db-pg.js` | Adaptador PostgreSQL (Neon, Supabase, etc.). |
+| `server/schema-supabase.sql` | Script para crear tablas en Postgres. |
+| `server/.env` | Variables: PORT, DATABASE_URL, ADMIN_PASSWORD, JWT_SECRET, opcional STRIPE_*, ALLOWED_ORIGIN. |
+| `server/package.json` | Dependencias: express, cors, pg, @neondatabase/serverless, jsonwebtoken, dotenv, etc. |
 
 ---
 
@@ -176,7 +178,7 @@ El build de producción sustituye el archivo de environment mediante `fileReplac
 
 1. El usuario usa solo el frontend (Angular) en el navegador.
 2. Las acciones que requieren datos o pagos hacen peticiones HTTP al backend (Express) usando `paymentApiUrl`.
-3. El backend lee y escribe en SQLite, habla con Stripe para el cobro y opcionalmente con el webhook para marcar órdenes como pagadas.
+3. El backend lee y escribe en PostgreSQL; cuando la pasarela de pago esté activa (Wompi), marcará las órdenes como pagadas. Mientras tanto se usa "Simular pago".
 4. El admin está protegido: solo quien conoce `ADMIN_PASSWORD` puede obtener un JWT; el resto de rutas `/api/admin` exigen ese token y el frontend lo envía con el interceptor y lo guarda en sesión hasta cerrar sesión o 401.
 
 Para poner todo en marcha: configurar `server/.env` (Stripe, ADMIN_PASSWORD, etc.), ejecutar el servidor en el puerto configurado (por ejemplo 3000) y la app Angular con `ng serve` (por ejemplo en 4200), con `paymentApiUrl` apuntando a ese servidor.
