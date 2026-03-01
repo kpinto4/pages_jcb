@@ -140,6 +140,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
+// ----- RAÍZ (para que no salga "Cannot GET /" al abrir la URL del servidor) -----
+app.get('/', (req, res) => {
+  res.json({
+    app: 'Juego de la Ciudad Bonita — API',
+    message: 'Backend en ejecución. La app web consume /api/*.',
+    health: '/api/health'
+  });
+});
+
 // ----- HEALTH -----
 app.get('/api/health', (req, res) => {
   res.json({
