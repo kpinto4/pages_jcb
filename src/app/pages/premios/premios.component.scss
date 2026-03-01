@@ -2,6 +2,8 @@
   background: var(--surface);
   padding: 4rem 1rem;
   border-top: 1px solid var(--border);
+  min-width: 0;
+  overflow-x: hidden;
 
   h2 {
     text-align: center;
@@ -108,7 +110,52 @@
 }
 
 @media (max-width: 900px) {
-  .cards {
+  .premios .cards {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .premios {
+    padding: 2rem 0.75rem;
+  }
+
+  .premios h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .premios .cards {
+    gap: 1.5rem;
+  }
+
+  .premios .card {
+    min-width: 0; /* Evita overflow en grid flex */
+  }
+
+  .premios .card img {
+    width: 100%;
+    height: auto;
+    min-height: 180px;
+    object-fit: cover;
+  }
+
+  .premios .card .info {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .premios {
+    padding: 1.5rem 0.5rem;
+  }
+
+  .premios h2 {
+    font-size: 1.35rem;
+    margin-bottom: 1rem;
+  }
+
+  .premios .card img {
+    min-height: 160px;
   }
 }

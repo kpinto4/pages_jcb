@@ -2,10 +2,15 @@
   background: linear-gradient(135deg, var(--background), var(--secondary));
   color: var(--text);
   padding: 4rem 1rem;
+  min-width: 0;
+  overflow-x: hidden;
 
   .hero-content {
     max-width: 1100px;
+    width: 100%;
     margin: auto;
+    box-sizing: border-box;
+    min-width: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2.5rem;
@@ -125,6 +130,55 @@
 
     .countdown {
       justify-content: center;
+    }
+  }
+
+  @media (max-width: 480px) {
+    padding: 2rem 0.75rem;
+
+    .hero-text h1 {
+      font-size: 1.5rem;
+    }
+
+    .hero-text p {
+      font-size: 0.95rem;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .countdown {
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+
+      .box {
+        min-width: 64px;
+        padding: 0.6rem;
+
+        span {
+          font-size: 1.3rem;
+        }
+
+        small {
+          font-size: 0.7rem;
+        }
+      }
+    }
+
+    .btn-comprar {
+      padding: 0.75rem 1.5rem;
+      font-size: 0.95rem;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .countdown .box {
+      min-width: 56px;
+      padding: 0.5rem;
+
+      span {
+        font-size: 1.1rem;
+      }
     }
   }
 }

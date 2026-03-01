@@ -90,4 +90,17 @@
     color: var(--accent);
     font-weight: 600;
   }
+
+  @media (max-width: 480px) {
+    margin: 2rem auto;
+    padding: 0 0.75rem;
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    form {
+      padding: 1.25rem;
+    }
+  }
 }

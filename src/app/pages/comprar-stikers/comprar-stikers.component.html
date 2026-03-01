@@ -43,7 +43,7 @@
     <input
       *ngIf="!cargandoStikers && stikers.length > 0"
       class="buscador"
-      placeholder="Buscar número (ej. 1234, 5678 o 1234-5678)"
+      placeholder="Buscar (ej. 1234 o 1234-5678)"
       [(ngModel)]="busqueda"
       (ngModelChange)="onBusquedaChange()"
     >
