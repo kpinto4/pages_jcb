@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  /** En producción se usa el mismo host que la página pero puerto 3012 (backend). Si hace falta fijar una URL, ponla aquí. */
-  paymentApiUrl: ''
+  /** URL del backend en el servidor. Así el build siempre llama al API correcto (también si abres por túnel/localhost). */
+  paymentApiUrl: 'http://n1.voriamtechnologies.com:3012'
 };

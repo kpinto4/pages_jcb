@@ -1,14 +1,20 @@
 import { environment } from '../../../environments/environment';
 
+const BACKEND_PORT = 3012;
+
 /**
- * URL base del backend API.
+ * URL base del backend API. Nunca devuelve vacío en el navegador para evitar que las peticiones vayan al mismo origen (front).
  * Puertos: Frontend 3015 | Backend 3012.
- * En producción, si paymentApiUrl está vacía, usa el mismo host con puerto 3012 (backend).
  */
 export function getApiUrl(): string {
-  if (environment.paymentApiUrl) return environment.paymentApiUrl;
-  if (typeof window !== 'undefined' && environment.production) {
-    return `${window.location.protocol}//${window.location.hostname}:3012`;
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    if (!isLocal) {
+      return `${protocol}//${host}:${BACKEND_PORT}`;
+    }
+    return environment.paymentApiUrl || `${protocol}//${host}:${BACKEND_PORT}`;
   }
-  return '';
+  return environment.paymentApiUrl || '';
 }
