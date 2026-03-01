@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of, throwError } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { getApiUrl } from './api-url';
 
 export interface AdminStats {
   totalOrders: number;
@@ -73,9 +73,8 @@ export interface AppConfig {
   providedIn: 'root'
 })
 export class AdminService {
-  private readonly apiUrl = environment.paymentApiUrl;
   private get base(): string {
-    return this.apiUrl || '';
+    return getApiUrl();
   }
 
   constructor(private http: HttpClient) {}

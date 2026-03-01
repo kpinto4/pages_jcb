@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, throwError } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { getApiUrl } from './api-url';
 
 const TOKEN_KEY = 'admin_token';
 
@@ -14,9 +14,11 @@ export interface LoginError {
   providedIn: 'root'
 })
 export class AdminAuthService {
-  private readonly apiUrl = environment.paymentApiUrl;
-
   constructor(private http: HttpClient) {}
+
+  private get apiUrl(): string {
+    return getApiUrl();
+  }
 
   getToken(): string | null {
     if (typeof sessionStorage === 'undefined') return null;
@@ -28,7 +30,7 @@ export class AdminAuthService {
   }
 
   login(password: string): Observable<{ token: string }> {
-    const base = this.apiUrl || '';
+    const base = this.apiUrl;
     return this.http.post<{ token: string }>(`${base}/api/admin/login`, { password }).pipe(
       tap((res) => {
         if (res?.token) {

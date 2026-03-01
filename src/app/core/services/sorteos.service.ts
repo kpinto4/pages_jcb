@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, catchError } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { getApiUrl } from './api-url';
 
 export interface Sorteo {
   id: number;
@@ -42,19 +42,21 @@ export interface ProgresoResponse {
   providedIn: 'root'
 })
 export class SorteosService {
-  private readonly apiUrl = environment.paymentApiUrl;
-
   constructor(private http: HttpClient) {}
 
+  private get apiUrl(): string {
+    return getApiUrl();
+  }
+
   getHomeData(): Observable<HomeSorteosResponse | null> {
-    const base = this.apiUrl || '';
+    const base = this.apiUrl;
     return this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
       catchError(() => of(null))
     );
   }
 
   getProgreso(): Observable<ProgresoResponse | null> {
-    const base = this.apiUrl || '';
+    const base = this.apiUrl;
     return this.http.get<ProgresoResponse>(`${base}/api/progreso`).pipe(
       catchError(() => of(null))
     );

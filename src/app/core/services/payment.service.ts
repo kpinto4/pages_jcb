@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, map, of, throwError } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { getApiUrl } from './api-url';
 
 export interface CreateCheckoutSessionRequest {
   amount: number;           // Total en centavos (ej: 5000 = 50.00 USD)
@@ -55,9 +55,11 @@ export interface SessionDetails {
   providedIn: 'root'
 })
 export class PaymentService {
-  private readonly apiUrl = environment.paymentApiUrl;
-
   constructor(private http: HttpClient) {}
+
+  private get apiUrl(): string {
+    return getApiUrl();
+  }
 
   /**
    * Crea una sesión de pago en el backend y devuelve la URL de Wompi Checkout.
