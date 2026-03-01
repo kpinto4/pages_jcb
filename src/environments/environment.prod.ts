@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  paymentApiUrl: '' // Reemplaza con la URL de tu backend en producción (ej: https://api.tudominio.com)
+  paymentApiUrl: 'http://n1.voriamtechnologies.com:3012'
 };
