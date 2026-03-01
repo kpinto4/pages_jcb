@@ -7,7 +7,7 @@
     <div class="card" *ngFor="let s of sorteos" [class.realizado]="s.estado === 'realizado'">
       <div class="card-img-wrap">
         <img
-          [src]="s.imagen_url || 'assets/img/premio-mayor.jpg'"
+          [src]="imageSrc(s.imagen_url)"
           [alt]="s.ganador_nombre ? ('Foto del ganador: ' + s.ganador_nombre) : s.nombre"
           class="card-img"
           (error)="onImgError($event)"

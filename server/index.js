@@ -215,11 +215,14 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
+// URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
+const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
+
 // ----- ADMIN: subir imagen (para premio mayor) -----
 app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const baseUrl = req.protocol + '://' + req.get('host');
+    const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
     const url = baseUrl + '/uploads/' + req.file.filename;
     res.json({ url });
   } catch (err) {

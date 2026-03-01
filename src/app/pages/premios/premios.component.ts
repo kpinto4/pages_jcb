@@ -1,6 +1,7 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Sorteo } from '../../core/services/sorteos.service';
+import { resolveImageUrl } from '../../core/services/api-url';
 
 @Component({
   selector: 'app-premios',
@@ -44,5 +45,10 @@ export class PremiosComponent {
   onImgError(event: Event): void {
     const img = event.target as HTMLImageElement;
     if (img) img.src = 'assets/img/premio-mayor.jpg';
+  }
+
+  /** URL de imagen para mostrar (corrige localhost en despliegue). */
+  imageSrc(imagenUrl: string | null | undefined): string {
+    return resolveImageUrl(imagenUrl) || 'assets/img/premio-mayor.jpg';
   }
 }

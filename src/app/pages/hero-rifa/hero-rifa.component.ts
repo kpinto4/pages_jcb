@@ -3,6 +3,7 @@ import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
 import { SorteosService, Sorteo, ProgresoResponse } from '../../core/services/sorteos.service';
+import { resolveImageUrl } from '../../core/services/api-url';
 
 @Component({
   selector: 'app-hero-rifa',
@@ -56,7 +57,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
       this.principal = data.principal ?? null;
       if (!this.principal) return;
       if (this.principal.imagen_url) {
-        this.heroImageUrl = this.principal.imagen_url;
+        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
       }
       this.startCountdownFromDate(this.principal.fecha);
     });

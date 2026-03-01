@@ -18,3 +18,19 @@ export function getApiUrl(): string {
   }
   return environment.paymentApiUrl || '';
 }
+
+/**
+ * Convierte URLs de imágenes con localhost o rutas /uploads/ a la URL del API actual (para despliegue).
+ * Cualquier URL que contenga localhost o 127.0.0.1 se reescribe al host del API configurado.
+ */
+export function resolveImageUrl(url: string | null | undefined): string {
+  if (!url || !url.trim()) return '';
+  const u = url.trim();
+  const base = getApiUrl();
+  if (u.startsWith('/uploads') || u.startsWith('/')) return base ? base + (u.startsWith('/') ? u : '/' + u) : u;
+  if (/localhost|127\.0\.0\.1/i.test(u)) {
+    const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
+    return base ? base + path : u;
+  }
+  return u;
+}
