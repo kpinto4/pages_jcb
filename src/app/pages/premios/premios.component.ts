@@ -19,6 +19,28 @@ export class PremiosComponent {
   })[] = [];
   @Input() loading = false;
 
+  /** Sorteos expandidos (solo imagen visible por defecto, clic despliega info). */
+  expandedIds = new Set<number>();
+
+  toggleExpand(s: Sorteo): void {
+    if (this.expandedIds.has(s.id)) {
+      this.expandedIds.delete(s.id);
+    } else {
+      this.expandedIds.add(s.id);
+    }
+  }
+
+  isExpanded(s: Sorteo): boolean {
+    return this.expandedIds.has(s.id);
+  }
+
+  onCardKeydown(e: KeyboardEvent, s: Sorteo): void {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      this.toggleExpand(s);
+    }
+  }
+
   get sorteos(): (Sorteo & { ganador_nombre?: string; ganador_cedula?: string; ganador_email?: string; ganador_telefono?: string })[] {
     return this.mayoresRealizados || [];
   }

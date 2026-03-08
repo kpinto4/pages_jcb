@@ -31,6 +31,8 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
 
     &.realizado {
       border-color: var(--accent);
@@ -50,11 +52,44 @@
       }
     }
 
+    .card-img-wrap {
+      position: relative;
+      overflow: hidden;
+    }
+
     img {
       width: 100%;
       height: 220px;
       object-fit: cover;
       transition: transform 0.4s ease;
+    }
+
+    .card-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.85;
+      transition: opacity 0.3s ease;
+
+      .card-overlay-text {
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    &:hover .card-overlay {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     .info {

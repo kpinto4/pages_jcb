@@ -4,17 +4,28 @@
   <p *ngIf="loading" class="loading">Cargando...</p>
 
   <div class="cards" *ngIf="!loading && sorteos.length > 0">
-    <div class="card" *ngFor="let s of sorteos" [class.realizado]="s.estado === 'realizado'">
+    <div
+      class="card"
+      *ngFor="let s of sorteos"
+      [class.realizado]="s.estado === 'realizado'"
+      [class.expanded]="isExpanded(s)"
+      (click)="toggleExpand(s)"
+      role="button"
+      tabindex="0"
+      (keydown)="onCardKeydown($event, s)"
+    >
       <div class="card-img-wrap">
         <img
           [src]="imageSrc(s.imagen_url)"
-          [alt]="s.ganador_nombre ? ('Foto del ganador: ' + s.ganador_nombre) : s.nombre"
+          [alt]="s.ganador_nombre ? ('Premio: ' + s.ganador_nombre) : s.nombre"
           class="card-img"
           (error)="onImgError($event)"
         >
-        <span *ngIf="s.imagen_url" class="card-img-label">Foto del ganador</span>
+        <div class="card-overlay" *ngIf="!isExpanded(s)">
+          <span class="card-overlay-text">Clic para ver detalles</span>
+        </div>
       </div>
-      <div class="info">
+      <div class="info" *ngIf="isExpanded(s)">
         <h3>{{ s.nombre }}</h3>
         <p *ngIf="s.premio_descripcion" class="premio-texto">{{ s.premio_descripcion }}</p>
         <p *ngIf="!s.premio_descripcion">{{ s.descripcion || 'Premio mayor del juego.' }}</p>
