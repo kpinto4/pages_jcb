@@ -141,7 +141,7 @@ export class AdminService {
     const formData = new FormData();
     formData.append('image', file);
     return this.http.post<{ url: string }>(`${this.base}/api/admin/upload-image`, formData).pipe(
-      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+      catchError((err) => throwError(() => err))
     );
   }
 

@@ -163,6 +163,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   private on401(): void {
     this.loggedIn = false;
+    this.loginError = 'Sesión expirada. Vuelve a iniciar sesión.';
   }
 
   cargarConfig(): void {
@@ -371,8 +372,13 @@ export class AdminComponent implements OnInit, OnDestroy {
             this.guardandoSorteo = false;
           }
         },
-        error: () => {
-          this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
+        error: (err) => {
+          if (err?.status === 401) this.on401();
+          else {
+            const e = err?.error;
+            const msg = typeof e === 'string' ? e : (e?.error ?? e?.message ?? 'Error al subir la imagen.');
+            this.error = typeof msg === 'string' ? msg : 'Error al subir la imagen. Usa la URL (Imgur, etc.) y pega el enlace.';
+          }
           this.guardandoSorteo = false;
         }
       });
