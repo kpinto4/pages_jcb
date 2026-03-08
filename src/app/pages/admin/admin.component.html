@@ -199,14 +199,13 @@
                 <input type="number" min="1" max="100" [(ngModel)]="r.porcentaje" placeholder="%"> %
                 <input type="number" min="1" [(ngModel)]="r.cantidad" placeholder="cantidad">
                 <span class="regla-hint">{{ r.cantidad }} ganador(es) al llegar al {{ r.porcentaje }}%</span>
-                <button type="button" class="btn-small" (click)="removeRegla(s.id, i)">Quitar</button>
               </div>
               <div class="reglas-actions">
-                <button type="button" class="btn-secondary" (click)="addRegla(s.id)">Añadir hito</button>
                 <button type="button" class="btn-primary" [disabled]="reglasSavingId === s.id" (click)="guardarReglas(s.id)">
                   {{ reglasSavingId === s.id ? 'Guardando...' : 'Guardar cambios' }}
                 </button>
               </div>
+              <!-- Lista: en qué momento se desbloquea cada anticipado -->
               <div *ngIf="getListaMomentosDesbloqueo(s.id).length > 0" class="lista-momentos">
                 <strong>Cuándo se desbloquea cada anticipado:</strong>
                 <ul>

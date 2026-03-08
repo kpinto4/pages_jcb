@@ -718,17 +718,6 @@ export class AdminComponent implements OnInit, OnDestroy {
     return lista;
   }
 
-  addRegla(sorteoMayorId: number): void {
-    const list = this.reglasAnticipados[sorteoMayorId] ?? [];
-    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [...list, { porcentaje: 50, cantidad: 1 }] };
-  }
-
-  removeRegla(sorteoMayorId: number, idx: number): void {
-    const list = [...(this.reglasAnticipados[sorteoMayorId] ?? [])];
-    list.splice(idx, 1);
-    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: list };
-  }
-
   guardarReglas(sorteoMayorId: number): void {
     this.reglasSavingId = sorteoMayorId;
     const reglas = this.reglasAnticipados[sorteoMayorId] ?? [];
