@@ -42,6 +42,7 @@ function toJSONSafe(obj) {
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Uploads dir:', uploadsDir);
 } catch (e) {
   console.warn('No se pudo crear uploadsDir:', e.message);
 }
@@ -148,11 +149,15 @@ app.use((req, res, next) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
+// memoryStorage evita problemas de permisos de disco; escribimos a disco manualmente
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) return cb(null, true);
+    cb(new Error('Solo se permiten imágenes (PNG, JPG, etc.)'), false);
+  }
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ----- RAÍZ (para que no salga "Cannot GET /" al abrir la URL del servidor) -----
 app.get('/', (req, res) => {
@@ -233,15 +238,34 @@ app.use('/api/admin', adminAuthMiddleware);
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
+app.post('/api/admin/upload-image', (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen es muy grande (máx. 5 MB). Comprime la imagen o usa una más pequeña.'
+        : (err.message || 'Error al recibir el archivo.');
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image" y elige una imagen.' });
+    }
+    const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase().replace(/[^a-z0-9.]/g, '');
+    const filename = randomUUID() + (ext || '.jpg');
+    const dest = path.join(uploadsDir, filename);
+    fs.writeFileSync(dest, req.file.buffer);
     const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
-    const url = baseUrl + '/uploads/' + req.file.filename;
+    const url = baseUrl + '/uploads/' + filename;
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err?.message || err);
-    res.status(500).json({ error: err?.message || 'Error al subir imagen' });
+    const msg = err?.code === 'ENOENT' || err?.code === 'EACCES'
+      ? 'No se pudo guardar la imagen en el servidor. Verifica permisos de la carpeta public/uploads.'
+      : (err?.message || 'Error al guardar la imagen.');
+    res.status(500).json({ error: msg });
   }
 });
 
