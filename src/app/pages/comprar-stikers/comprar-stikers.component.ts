@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
-import { Subject, takeUntil, startWith } from 'rxjs';
+import { Subject, takeUntil, startWith, forkJoin } from 'rxjs';
 import { PaymentService, SessionDetails } from '../../core/services/payment.service';
 import { SorteosService } from '../../core/services/sorteos.service';
 
@@ -81,31 +81,23 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     });
 
     this.cargandoStikers = true;
-    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data) => {
+    forkJoin({
+      home: this.sorteosService.getHomeData(),
+      stikers: this.paymentService.getStikers()
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: ({ home: data, stikers: res }) => {
         if (!data?.principal) {
           this.stikers = [];
-          this.cargandoStikers = false;
-          return;
+        } else if (res?.stikers && res.stikers.length > 0) {
+          this.stikers = res.stikers.map(s => ({
+            numeroA: s.numeroA,
+            numeroB: s.numeroB,
+            estado: s.estado as 'libre' | 'ocupado'
+          }));
+        } else {
+          this.stikers = [];
         }
-        this.paymentService.getStikers().pipe(takeUntil(this.destroy$)).subscribe({
-          next: (res) => {
-            if (res.stikers && res.stikers.length > 0) {
-              this.stikers = res.stikers.map(s => ({
-                numeroA: s.numeroA,
-                numeroB: s.numeroB,
-                estado: s.estado as 'libre' | 'ocupado'
-              }));
-            } else {
-              this.stikers = [];
-            }
-            this.cargandoStikers = false;
-          },
-          error: () => {
-            this.stikers = [];
-            this.cargandoStikers = false;
-          }
-        });
+        this.cargandoStikers = false;
       },
       error: () => {
         this.stikers = [];

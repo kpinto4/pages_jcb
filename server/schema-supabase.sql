@@ -136,3 +136,7 @@ ALTER TABLE orders ALTER COLUMN currency SET DEFAULT 'cop';
 
 -- Añadir índice en orders.created_at si no existe (para limpiar pendientes expirados)
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+
+-- Índices compuestos para acelerar consultas frecuentes (inicio, sorteos, stikers)
+CREATE INDEX IF NOT EXISTS idx_sorteos_tipo_estado_fecha ON sorteos(tipo, estado, fecha);
+CREATE INDEX IF NOT EXISTS idx_sorteos_mayor_estado ON sorteos(sorteo_mayor_id, estado);

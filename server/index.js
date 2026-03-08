@@ -860,16 +860,26 @@ app.get('/api/sorteos/home', async (req, res) => {
         WHERE s.sorteo_mayor_id = ? AND s.estado = 'programado'
         ORDER BY s.id ASC
       `).all(principal.id);
-      anticipadosActuales = await Promise.all(rows.map(async (row) => {
-        const benef = await db.prepare(`
-          SELECT numero_a, numero_b FROM beneficios_anticipados WHERE sorteo_id = ? LIMIT 1
-        `).get(row.id);
+      const sorteoIds = rows.map(r => r.id);
+      let beneficiosMap = {};
+      if (sorteoIds.length > 0) {
+        const placeholders = sorteoIds.map(() => '?').join(',');
+        const beneficios = await db.prepare(`
+          SELECT DISTINCT ON (sorteo_id) sorteo_id, numero_a, numero_b
+          FROM beneficios_anticipados
+          WHERE sorteo_id IN (${placeholders})
+          ORDER BY sorteo_id, id ASC
+        `).all(...sorteoIds);
+        for (const b of beneficios) beneficiosMap[b.sorteo_id] = b;
+      }
+      anticipadosActuales = rows.map(row => {
+        const benef = beneficiosMap[row.id];
         return {
           ...row,
           revelado: !!benef,
           numero_revelado: benef ? `${benef.numero_a}-${benef.numero_b}` : null
         };
-      }));
+      });
     }
 
     const mayoresRealizados = await db.prepare(`

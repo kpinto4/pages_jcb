@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, catchError } from 'rxjs';
+import { Observable, of, catchError, shareReplay } from 'rxjs';
 import { getApiUrl } from './api-url';
 
 export interface Sorteo {
@@ -48,11 +48,17 @@ export class SorteosService {
     return getApiUrl();
   }
 
+  private homeDataCache$: Observable<HomeSorteosResponse | null> | null = null;
+
   getHomeData(): Observable<HomeSorteosResponse | null> {
-    const base = this.apiUrl;
-    return this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
-      catchError(() => of(null))
-    );
+    if (!this.homeDataCache$) {
+      const base = this.apiUrl;
+      this.homeDataCache$ = this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
+        catchError(() => of(null)),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+    }
+    return this.homeDataCache$;
   }
 
   getProgreso(): Observable<ProgresoResponse | null> {
