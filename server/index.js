@@ -1,16 +1,30 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { initDb } from './db-adapter.js';
 import { randomUUID, createHash } from 'crypto';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '.env') });
+let enviarComprobanteTrasPago = async () => {};
+try {
+  const { enviarComprobante } = await import('./email.js');
+  enviarComprobanteTrasPago = async (orderId) => {
+    const order = await db?.prepare('SELECT email, nombre, total_cents, currency FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
+    if (!order?.email) return;
+    const items = await db?.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId) || [];
+    return enviarComprobante(order, items);
+  };
+} catch (e) {
+  console.warn('Email (comprobantes) no disponible:', e.message);
+}
 
 /** Convierte BigInt y otros valores no serializables para res.json() (p. ej. Neon/pg devuelve id como BigInt). */
 function toJSONSafe(obj) {
@@ -560,6 +574,7 @@ app.post('/api/simulate-payment', async (req, res) => {
     });
     await runTx();
     await registrarBeneficiosAnticipados(orderId);
+    enviarComprobanteTrasPago(orderId).catch(e => console.warn('Email comprobante:', e?.message));
 
     res.json({ sessionId: orderId, ok: true });
   } catch (err) {
@@ -654,6 +669,7 @@ app.post('/api/webhooks/wompi', async (req, res) => {
     await db.prepare(`UPDATE orders SET status = 'paid', payment_reference = ?, stripe_session_id = ? WHERE id = ?`).run(transaction.id, transaction.id, reference);
     await registrarBeneficiosAnticipados(reference);
     console.log('Wompi: orden marcada como pagada:', reference);
+    enviarComprobanteTrasPago(reference).catch(e => console.warn('Email comprobante:', e?.message));
   } catch (e) {
     console.error('Webhook Wompi:', e?.message || e);
     return res.status(500).send('Error');
@@ -693,6 +709,7 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
 
     await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(id);
     await registrarBeneficiosAnticipados(id);
+    enviarComprobanteTrasPago(id).catch(e => console.warn('Email comprobante:', e?.message));
 
     const updated = await db.prepare(`
       SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
