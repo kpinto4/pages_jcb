@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,7 +40,11 @@ function toJSONSafe(obj) {
   return obj;
 }
 
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
+// En Vercel/serverless el filesystem es solo-lectura excepto /tmp. Usar tmp para uploads.
+const isServerless = !!process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION;
+const uploadsDir = isServerless
+  ? path.join(os.tmpdir(), 'jcb-uploads')
+  : path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 } catch (e) {
@@ -146,7 +151,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -233,7 +238,18 @@ app.use('/api/admin', adminAuthMiddleware);
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
+app.post('/api/admin/upload-image', (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('Error upload imagen:', err?.message || err);
+      const msg = err?.code === 'ENOENT' || err?.code === 'EACCES'
+        ? 'No se pudo guardar el archivo. Usa la URL de la imagen (Imgur, Cloudinary, etc.) y pégalo en el campo.'
+        : (err?.message || 'Error al subir la imagen.');
+      return res.status(500).json({ error: msg });
+    }
+    next();
+  });
+}, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
     const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
