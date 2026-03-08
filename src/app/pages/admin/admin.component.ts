@@ -701,21 +701,6 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [...list, { porcentaje: 50, cantidad: 1 }] };
   }
 
-  /** Lista "Anticipado N → se desbloquea al X%" a partir de las reglas (ordenadas por % ascendente) */
-  getListaMomentosDesbloqueo(sorteoMayorId: number): { anticipado: number; porcentaje: number }[] {
-    const reglas = (this.reglasAnticipados[sorteoMayorId] ?? [])
-      .filter((r) => r.porcentaje >= 0 && r.porcentaje <= 100 && r.cantidad >= 1)
-      .sort((a, b) => a.porcentaje - b.porcentaje);
-    const lista: { anticipado: number; porcentaje: number }[] = [];
-    let idx = 1;
-    for (const r of reglas) {
-      for (let i = 0; i < r.cantidad; i++) {
-        lista.push({ anticipado: idx++, porcentaje: r.porcentaje });
-      }
-    }
-    return lista;
-  }
-
   removeRegla(sorteoMayorId: number, idx: number): void {
     const list = [...(this.reglasAnticipados[sorteoMayorId] ?? [])];
     list.splice(idx, 1);

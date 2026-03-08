@@ -205,18 +205,6 @@
                   {{ reglasSavingId === s.id ? 'Guardando...' : 'Guardar reglas' }}
                 </button>
               </div>
-              <!-- Lista: en qué momento se desbloquea cada anticipado -->
-              <div *ngIf="getListaMomentosDesbloqueo(s.id).length > 0" class="lista-momentos">
-                <strong>Cuándo se desbloquea cada anticipado:</strong>
-                <ul>
-                  <li *ngFor="let m of getListaMomentosDesbloqueo(s.id)">
-                    Anticipado {{ m.anticipado }} → al {{ m.porcentaje }}% vendido
-                  </li>
-                </ul>
-              </div>
-              <p *ngIf="getListaMomentosDesbloqueo(s.id).length === 0 && (reglasAnticipados[s.id] || []).length > 0" class="muted small">
-                Añade hitos y guarda para ver la lista de momentos.
-              </p>
             </ng-container>
           </div>
         </div>
