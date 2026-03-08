@@ -35,15 +35,50 @@ export async function enviarComprobante(order, items = []) {
   const moneda = ((order?.currency || 'cop') + '').toUpperCase();
   const fromAddr = (process.env.EMAIL_FROM || user || 'noreply@example.com').trim();
 
-  const numerosHtml = items.length > 0
-    ? items.map(i => `<li><strong>${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</strong></li>`).join('\n')
-    : '<li>Sin detalle</li>';
+  const numerosRows = items.length > 0
+    ? items.map(i => `<tr><td style="padding:10px 16px;border-bottom:1px solid #e5e7eb;font-size:16px;font-weight:600;color:#166534;">${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</td></tr>`).join('')
+    : '<tr><td style="padding:10px 16px;color:#6b7280;">Sin detalle</td></tr>';
 
-  const html = `<!DOCTYPE html><html><body>
-    <p>Gracias por tu compra, ${nombre}.</p>
-    <p><strong>Números comprados:</strong></p><ul>${numerosHtml}</ul>
-    <p><strong>Total:</strong> ${total.toLocaleString('es-CO')} ${moneda}</p>
-  </body></html>`;
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#166534 0%,#22c55e 100%);padding:28px 24px;text-align:center;">
+            <h1 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.02em;">🍀 Juego de la Ciudad Bonita</h1>
+            <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">Comprobante de compra</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px;">
+            <p style="margin:0 0 20px;font-size:16px;color:#374151;line-height:1.5;">¡Gracias por tu compra, <strong>${nombre}</strong>!</p>
+            <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Tu compra ha sido confirmada. Aquí están tus números:</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
+              ${numerosRows}
+            </table>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border-radius:8px;border:1px solid #a7f3d0;">
+              <tr>
+                <td style="padding:16px 20px;">
+                  <span style="font-size:14px;color:#166534;">Total pagado</span><br>
+                  <span style="font-size:24px;font-weight:700;color:#166534;">${total.toLocaleString('es-CO')} ${moneda}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;">
+            Guarda este correo como comprobante. Verifica tu compra en <strong>Verificar Stiker</strong> con tu cédula.
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
   try {
     await transporter.sendMail({
