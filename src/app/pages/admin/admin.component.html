@@ -184,8 +184,13 @@
             <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
           </div>
         </div>
-        <!-- Reglas de anticipados (solo Premio Mayor) - panel expandible, visible al hacer clic en el botón -->
-        <div *ngIf="(s.tipo || '').toLowerCase() === 'mayor' && reglasExpandedId === s.id" class="reglas-anticipados-wrap">
+        <!-- Reglas de anticipados (solo Premio Mayor) -->
+        <div *ngIf="(s.tipo || '').toLowerCase() === 'mayor'" class="reglas-anticipados-wrap">
+          <button type="button" class="reglas-toggle" (click)="toggleReglas(s); $event.stopPropagation()" [attr.aria-expanded]="reglasExpandedId === s.id">
+            <span class="reglas-toggle-icon">{{ reglasExpandedId === s.id ? '▼' : '▶' }}</span>
+            <span>Reglas de anticipados (hitos)</span>
+            <span class="reglas-toggle-flecha">{{ reglasExpandedId === s.id ? '▲' : '▾' }}</span>
+          </button>
           <div *ngIf="reglasExpandedId === s.id" class="reglas-panel">
             <p class="muted small">Por defecto: primer anticipado al 20%, luego cada 10%, y al 90% se desbloquean los que falten. Puedes modificar los porcentajes y cantidades.</p>
             <div *ngIf="reglasLoadingId === s.id" class="loading">Cargando reglas...</div>
@@ -214,15 +219,6 @@
           </div>
         </div>
         <div class="sorteo-actions">
-          <button
-            *ngIf="(s.tipo || '').toLowerCase() === 'mayor'"
-            type="button"
-            class="btn-reglas"
-            [class.expanded]="reglasExpandedId === s.id"
-            (click)="toggleReglas(s); $event.stopPropagation()"
-          >
-            {{ reglasExpandedId === s.id ? '▼ Reglas de anticipados' : '▶ Reglas de anticipados' }}
-          </button>
           <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
           <button
             type="button"

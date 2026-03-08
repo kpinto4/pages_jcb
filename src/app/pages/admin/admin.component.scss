@@ -439,26 +439,6 @@
     flex-shrink: 0;
   }
 
-  .btn-reglas {
-    background: var(--primary-light);
-    color: var(--primary);
-    border: 1px solid var(--primary);
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-
-    &:hover {
-      background: rgba(249, 115, 22, 0.25);
-    }
-
-    &.expanded {
-      background: var(--primary);
-      color: var(--background);
-    }
-  }
-
   .btn-edit {
     background: transparent;
     color: var(--primary);
