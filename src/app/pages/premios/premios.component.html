@@ -21,9 +21,6 @@
           class="card-img"
           (error)="onImgError($event)"
         >
-        <div class="card-overlay" *ngIf="!isExpanded(s)">
-          <span class="card-overlay-text">Clic para ver detalles</span>
-        </div>
       </div>
       <div class="info" *ngIf="isExpanded(s)">
         <h3>{{ s.nombre }}</h3>
