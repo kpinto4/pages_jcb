@@ -7,7 +7,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { initDb } from './db-adapter.js';
-import { enviarComprobante } from './email.js';
 import { randomUUID, createHash } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -561,7 +560,6 @@ app.post('/api/simulate-payment', async (req, res) => {
     });
     await runTx();
     await registrarBeneficiosAnticipados(orderId);
-    enviarComprobanteTrasPago(orderId).catch(e => console.warn('Email comprobante:', e?.message));
 
     res.json({ sessionId: orderId, ok: true });
   } catch (err) {
@@ -598,16 +596,15 @@ app.get('/api/session/:sessionId', async (req, res) => {
       });
     }
 
+    let stikersDetail = '';
     const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(sessionId);
-    const stikers = items.map(i => ({ numeroA: String(i.numero_a ?? ''), numeroB: String(i.numero_b ?? '') }));
-    const stikersDetail = stikers.length > 0 ? stikers.map(s => `${s.numeroA} - ${s.numeroB}`).join(', ') : '';
+    if (items.length > 0) stikersDetail = items.map(i => `${i.numero_a} - ${i.numero_b}`).join(', ');
     return res.json({
       id: order.id,
       customer_email: order.email,
       amount_total: Number(order.total_cents),
       currency: order.currency,
-      metadata: { customerName: order.nombre || '', stikersDetail },
-      stikers
+      metadata: { customerName: order.nombre || '', stikersDetail }
     });
   } catch (err) {
     console.error('Error obteniendo sesión:', err);
@@ -657,7 +654,6 @@ app.post('/api/webhooks/wompi', async (req, res) => {
     await db.prepare(`UPDATE orders SET status = 'paid', payment_reference = ?, stripe_session_id = ? WHERE id = ?`).run(transaction.id, transaction.id, reference);
     await registrarBeneficiosAnticipados(reference);
     console.log('Wompi: orden marcada como pagada:', reference);
-    enviarComprobanteTrasPago(reference).catch(e => console.warn('Email comprobante:', e?.message));
   } catch (e) {
     console.error('Webhook Wompi:', e?.message || e);
     return res.status(500).send('Error');
@@ -697,7 +693,6 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
 
     await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(id);
     await registrarBeneficiosAnticipados(id);
-    enviarComprobanteTrasPago(id).catch(e => console.warn('Email comprobante:', e?.message));
 
     const updated = await db.prepare(`
       SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
@@ -943,14 +938,6 @@ async function fillStikerSlots5000(txOrDb = db) {
   for (let i = 0; i < 5000; i++) {
     await insertSlot.run(rows[i][0], rows[i][1]);
   }
-}
-
-/** Envía el comprobante por correo al cliente cuando la orden queda pagada. */
-async function enviarComprobanteTrasPago(orderId) {
-  const order = await db.prepare('SELECT email, nombre, total_cents, currency FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
-  if (!order || !order.email) return;
-  const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
-  return enviarComprobante(order, items);
 }
 
 /** Registra beneficios anticipados cuando una orden queda pagada. Solo coincide con números bendecidos de anticipados de la misma campaña (mismo premio mayor). Sin duplicados. */

@@ -49,8 +49,6 @@ export interface SessionDetails {
   metadata?: Record<string, string>;
   /** Wompi: orden aún no confirmada por webhook */
   status?: 'pending';
-  /** Números comprados (para resumen en pantalla de éxito) */
-  stikers?: Array<{ numeroA: string; numeroB: string }>;
 }
 
 @Injectable({

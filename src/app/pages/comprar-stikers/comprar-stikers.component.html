@@ -220,17 +220,13 @@
     </p>
     <p *ngIf="!successData.customerName && !successData.customerEmail">Tu pago se ha procesado correctamente.</p>
 
-    <p class="stikers-detail" *ngIf="successData.stikersDetail && !successData.stikers?.length">
+    <p class="stikers-detail" *ngIf="successData.stikersDetail">
       {{ successData.stikersDetail }}
     </p>
 
-    <!-- Resumen de números comprados (lista clara) -->
-    <div class="resumen-numeros" *ngIf="(successData.stikers && successData.stikers.length) || seleccionados.length">
-      <p class="resumen-numeros-titulo">Tus números:</p>
-      <ul>
-        <li *ngFor="let s of (successData.stikers || seleccionados)">{{ s.numeroA }} - {{ s.numeroB }}</li>
-      </ul>
-    </div>
+    <ul *ngIf="seleccionados.length > 0">
+      <li *ngFor="let s of seleccionados">{{ s.numeroA }} - {{ s.numeroB }}</li>
+    </ul>
 
     <p class="total">Total pagado: {{ formatearPrecio(successData.amountTotal, currency) }}</p>
 
