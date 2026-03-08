@@ -574,6 +574,34 @@
     max-width: 100%;
   }
 
+  .resumen-numeros {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+
+    .resumen-numeros-titulo {
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 0.5rem;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 0.5rem;
+
+      li {
+        color: var(--text);
+        font-weight: 500;
+      }
+    }
+  }
+
   ul {
     list-style: none;
     padding: 0;

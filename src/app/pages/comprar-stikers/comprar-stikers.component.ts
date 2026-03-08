@@ -58,6 +58,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     customerEmail?: string;
     amountTotal: number;
     stikersDetail?: string;
+    stikers?: Array<{ numeroA: string; numeroB: string }>;
   } | null = null;
 
   /** Mostrar mensaje de pago en verificación cuando el webhook tarda */
@@ -184,7 +185,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       customerName: session.metadata?.['customerName'] || undefined,
       customerEmail: session.customer_email || undefined,
       amountTotal: amount,
-      stikersDetail: session.metadata?.['stikersDetail'] || undefined
+      stikersDetail: session.metadata?.['stikersDetail'] || undefined,
+      stikers: session.stikers || undefined
     };
   }
 
@@ -400,7 +402,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
           customerName: this.cliente.nombre || undefined,
           customerEmail: this.cliente.email || undefined,
           amountTotal: this.total,
-          stikersDetail: this.seleccionados.map(s => `${s.numeroA} - ${s.numeroB}`).join(', ')
+          stikersDetail: this.seleccionados.map(s => `${s.numeroA} - ${s.numeroB}`).join(', '),
+          stikers: this.seleccionados.map(s => ({ numeroA: s.numeroA, numeroB: s.numeroB }))
         };
         this.step = 4;
       },
