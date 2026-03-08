@@ -676,42 +676,23 @@
 
 /* Reglas de anticipados (colapsable en Premio Mayor) */
 .reglas-anticipados-wrap {
-  flex: 0 0 100%;
   width: 100%;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
-  order: 5;
 }
 
 .reglas-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: var(--primary-light);
-  border: 1px solid var(--primary);
+  background: transparent;
+  border: none;
   color: var(--primary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  width: 100%;
-  justify-content: flex-start;
+  padding: 0.25rem 0;
+  font-weight: 500;
 
   &:hover {
-    background: rgba(249, 115, 22, 0.25);
-  }
-
-  .reglas-toggle-icon {
-    font-size: 0.8rem;
-    min-width: 1em;
-  }
-
-  .reglas-toggle-flecha {
-    margin-left: auto;
-    font-size: 1rem;
-    opacity: 0.9;
+    text-decoration: underline;
   }
 }
 

@@ -186,10 +186,8 @@
         </div>
         <!-- Reglas de anticipados (solo Premio Mayor) -->
         <div *ngIf="(s.tipo || '').toLowerCase() === 'mayor'" class="reglas-anticipados-wrap">
-          <button type="button" class="reglas-toggle" (click)="toggleReglas(s); $event.stopPropagation()" [attr.aria-expanded]="reglasExpandedId === s.id">
-            <span class="reglas-toggle-icon">{{ reglasExpandedId === s.id ? '▼' : '▶' }}</span>
-            <span>Reglas de anticipados (hitos)</span>
-            <span class="reglas-toggle-flecha">{{ reglasExpandedId === s.id ? '▲' : '▾' }}</span>
+          <button type="button" class="reglas-toggle" (click)="toggleReglas(s); $event.stopPropagation()">
+            {{ reglasExpandedId === s.id ? 'Reglas de anticipados ▲' : 'Reglas de anticipados ▾' }}
           </button>
           <div *ngIf="reglasExpandedId === s.id" class="reglas-panel">
             <p class="muted small">Por defecto: primer anticipado al 20%, luego cada 10%, y al 90% se desbloquean los que falten. Puedes modificar los porcentajes y cantidades.</p>
