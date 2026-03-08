@@ -1000,14 +1000,7 @@ async function fillStikerSlots5000(txOrDb = db) {
   }
 }
 
-/** Reglas por defecto: 20%, 30%, 40%, 50%, 60%, 70%, 80% (1 c/u), 90% (resto=2). Total 10 anticipados. */
-const REGLAS_ANTICIPADOS_DEFAULT = [
-  { porcentaje: 20, cantidad: 1 }, { porcentaje: 30, cantidad: 1 }, { porcentaje: 40, cantidad: 1 },
-  { porcentaje: 50, cantidad: 1 }, { porcentaje: 60, cantidad: 1 }, { porcentaje: 70, cantidad: 1 },
-  { porcentaje: 80, cantidad: 1 }, { porcentaje: 90, cantidad: 2 }
-];
-
-/** Obtiene reglas de anticipados para un premio mayor. Si no hay filas, retorna las por defecto. */
+/** Obtiene reglas de anticipados para un premio mayor. Si no hay tabla o filas, retorna []. */
 async function getReglasAnticipados(sorteoMayorId) {
   if (!sorteoMayorId) return [];
   try {
@@ -1016,10 +1009,9 @@ async function getReglasAnticipados(sorteoMayorId) {
       WHERE sorteo_mayor_id = ?
       ORDER BY porcentaje ASC
     `).all(sorteoMayorId);
-    if (rows && rows.length > 0) return rows;
-    return REGLAS_ANTICIPADOS_DEFAULT;
+    return rows || [];
   } catch (e) {
-    return REGLAS_ANTICIPADOS_DEFAULT;
+    return [];
   }
 }
 
@@ -1218,16 +1210,6 @@ app.post('/api/admin/sorteos', async (req, res) => {
           while (seen.has(num)) num = randomNumero4();
           seen.add(num);
           await insertAnticipado.run(`Anticipado ${i}`, fecha, '', premioAnticipado, mayorId, num);
-        }
-        // Reglas por defecto: 20%, 30%, 40%, 50%, 60%, 70%, 80% (1 cada uno), 90% (los 2 restantes)
-        try {
-          const insertRegla = tx.prepare('INSERT INTO anticipados_reglas (sorteo_mayor_id, porcentaje, cantidad) VALUES (?, ?, ?)');
-          const reglasDefault = [[20, 1], [30, 1], [40, 1], [50, 1], [60, 1], [70, 1], [80, 1], [90, 2]];
-          for (const [pct, cant] of reglasDefault) {
-            await insertRegla.run(mayorId, pct, cant);
-          }
-        } catch (e) {
-          console.warn('No se pudieron crear reglas de anticipados (tabla puede no existir):', e.message);
         }
       }
       return row;
