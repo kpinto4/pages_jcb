@@ -1,4 +1,4 @@
-<section class="comprar">
+<section class="comprar" [class.has-sticky-bar]="step === 1 && !cargandoStikers && stikers.length > 0">
 
   <header class="comprar-header">
     <h1 class="comprar-title">Comprar Stikers</h1>
@@ -78,6 +78,18 @@
       </button>
     </div>
 
+    <!-- Barra fija: resumen + Continuar siempre visible (no hay que deslizar) -->
+    <div *ngIf="!cargandoStikers && stikers.length > 0" class="resumen-sticky">
+      <span class="resumen-sticky-count">{{ seleccionados.length }} stikers</span>
+      <button
+        class="btn-primary"
+        [disabled]="seleccionados.length === 0"
+        (click)="nextStep()"
+      >
+        Continuar
+      </button>
+    </div>
+
     <!-- Paginación: 100 stikers por vista -->
     <nav *ngIf="!cargandoStikers && stikers.length > 0 && totalPages > 1" class="paginacion" aria-label="Páginas de stikers">
       <button
@@ -109,7 +121,8 @@
       </button>
     </nav>
 
-    <div class="resumen" *ngIf="stikers.length > 0">
+    <!-- Resumen inline (visible al llegar al final, para usuarios que deslizan) -->
+    <div class="resumen" *ngIf="stikers.length > 0" aria-hidden="true">
       <p>{{ seleccionados.length }} stikers seleccionados</p>
       <button
         class="btn-primary"

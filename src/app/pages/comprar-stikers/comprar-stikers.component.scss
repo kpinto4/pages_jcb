@@ -6,6 +6,10 @@
   box-sizing: border-box;
   min-width: 0;
   overflow-x: hidden;
+
+  &.has-sticky-bar {
+    padding-bottom: 6rem; /* Espacio para la barra fija */
+  }
 }
 
 .comprar-header {
@@ -385,6 +389,34 @@
 .stiker-number.secondary {
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+/* Barra fija en la parte inferior: siempre visible, sin deslizar */
+.resumen-sticky {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.resumen-sticky-count {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.resumen-sticky .btn-primary {
+  flex-shrink: 0;
+  min-width: 140px;
 }
 
 .resumen,
