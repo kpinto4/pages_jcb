@@ -696,11 +696,6 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
   }
 
-  addRegla(sorteoMayorId: number): void {
-    const list = this.reglasAnticipados[sorteoMayorId] ?? [];
-    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [...list, { porcentaje: 50, cantidad: 1 }] };
-  }
-
   /** Lista "Anticipado N → se desbloquea al X%" a partir de las reglas (ordenadas por % ascendente) */
   getListaMomentosDesbloqueo(sorteoMayorId: number): { anticipado: number; porcentaje: number }[] {
     const reglas = (this.reglasAnticipados[sorteoMayorId] ?? [])
@@ -714,12 +709,6 @@ export class AdminComponent implements OnInit, OnDestroy {
       }
     }
     return lista;
-  }
-
-  removeRegla(sorteoMayorId: number, idx: number): void {
-    const list = [...(this.reglasAnticipados[sorteoMayorId] ?? [])];
-    list.splice(idx, 1);
-    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: list };
   }
 
   guardarReglas(sorteoMayorId: number): void {
