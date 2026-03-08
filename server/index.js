@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,11 +39,7 @@ function toJSONSafe(obj) {
   return obj;
 }
 
-// En Vercel/serverless el filesystem es solo-lectura excepto /tmp. Usar tmp para uploads.
-const isServerless = !!process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION;
-const uploadsDir = isServerless
-  ? path.join(os.tmpdir(), 'jcb-uploads')
-  : path.join(__dirname, 'public', 'uploads');
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 } catch (e) {
@@ -151,7 +146,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use('/uploads', express.static(uploadsDir));
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -238,26 +233,15 @@ app.use('/api/admin', adminAuthMiddleware);
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', (req, res, next) => {
-  upload.single('image')(req, res, (err) => {
-    if (err) {
-      console.error('Error upload imagen:', err?.message || err);
-      const msg = err?.code === 'ENOENT' || err?.code === 'EACCES'
-        ? 'No se pudo guardar el archivo. Usa la URL de la imagen (Imgur, Cloudinary, etc.) y pégalo en el campo.'
-        : (err?.message || 'Error al subir la imagen.');
-      return res.status(500).json({ error: msg });
-    }
-    next();
-  });
-}, (req, res) => {
+app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
     const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
     const url = baseUrl + '/uploads/' + req.file.filename;
     res.json({ url });
   } catch (err) {
-    console.error('Error upload imagen:', err?.message || err);
-    res.status(500).json({ error: err?.message || 'Error al subir imagen' });
+    console.error('Error upload imagen:', err);
+    res.status(500).json({ error: err.message || 'Error al subir imagen' });
   }
 });
 
@@ -973,30 +957,18 @@ app.patch('/api/admin/sorteos/:id/reglas-anticipados', async (req, res) => {
     if (!Array.isArray(reglas)) {
       return res.status(400).json({ error: 'reglas debe ser un array' });
     }
-    const porcentajes = new Set();
+    await db.prepare('DELETE FROM anticipados_reglas WHERE sorteo_mayor_id = ?').run(id);
+    const insert = db.prepare('INSERT INTO anticipados_reglas (sorteo_mayor_id, porcentaje, cantidad) VALUES (?, ?, ?)');
     for (const r of reglas) {
       const p = parseInt(r.porcentaje, 10);
-      if (!isNaN(p) && p >= 0 && p <= 100 && porcentajes.has(p)) {
-        return res.status(400).json({ error: `Porcentaje duplicado: ${p}%. Cada hito debe tener un porcentaje distinto.` });
-      }
-      if (!isNaN(p) && p >= 0 && p <= 100) porcentajes.add(p);
+      const c = Math.max(1, parseInt(r.cantidad, 10) || 1);
+      if (p >= 0 && p <= 100) await insert.run(id, p, c);
     }
-    const runTx = db.transaction(async (tx) => {
-      await tx.prepare('DELETE FROM anticipados_reglas WHERE sorteo_mayor_id = ?').run(id);
-      const insert = tx.prepare('INSERT INTO anticipados_reglas (sorteo_mayor_id, porcentaje, cantidad) VALUES (?, ?, ?)');
-      for (const r of reglas) {
-        const p = parseInt(r.porcentaje, 10);
-        const c = Math.max(1, parseInt(r.cantidad, 10) || 1);
-        if (!isNaN(p) && p >= 0 && p <= 100) await insert.run(id, p, c);
-      }
-      return await getReglasAnticipados(id);
-    });
-    const updated = await runTx();
+    const updated = await getReglasAnticipados(id);
     res.json(toJSONSafe({ reglas: updated }));
   } catch (err) {
-    console.error('Error PATCH reglas-anticipados:', err?.message || err);
-    const msg = err?.message || 'Error al guardar las reglas.';
-    if (!res.headersSent) res.status(500).json({ error: String(msg) });
+    console.error('Error PATCH reglas-anticipados:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1245,10 +1217,9 @@ app.post('/api/admin/sorteos', async (req, res) => {
     const row = await runTx();
     res.status(201).json(toJSONSafe(row));
   } catch (err) {
-    console.error('Error POST /api/admin/sorteos:', err?.message || err);
-    const raw = err?.message || err?.code || (typeof err === 'string' ? err : undefined);
-    const msg = raw ? String(raw) : 'Error al crear el sorteo. Revisa que la base de datos esté correcta y que no falte la tabla stiker_slots.';
-    if (!res.headersSent) res.status(500).json({ error: msg });
+    console.error('Error POST /api/admin/sorteos:', err);
+    const msg = (err && (err.message || err.code || err.error || (typeof err === 'string' ? err : undefined))) || 'Error al crear el sorteo';
+    if (!res.headersSent) res.status(500).json({ error: String(msg) });
   }
 });
 
