@@ -184,6 +184,30 @@
             <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
           </div>
         </div>
+        <!-- Reglas de anticipados (solo Premio Mayor) -->
+        <div *ngIf="(s.tipo || '').toLowerCase() === 'mayor'" class="reglas-anticipados-wrap">
+          <button type="button" class="reglas-toggle" (click)="toggleReglas(s); $event.stopPropagation()">
+            {{ reglasExpandedId === s.id ? 'Reglas de anticipados ▲' : 'Reglas de anticipados ▾' }}
+          </button>
+          <div *ngIf="reglasExpandedId === s.id" class="reglas-panel">
+            <p class="muted small">Define umbrales de % vendido para desbloquear ganadores. Sin reglas = todos se desbloquean al instante.</p>
+            <div *ngIf="reglasLoadingId === s.id" class="loading">Cargando reglas...</div>
+            <ng-container *ngIf="reglasLoadingId !== s.id">
+              <div *ngFor="let r of (reglasAnticipados[s.id] || []); let i = index" class="regla-row">
+                <input type="number" min="1" max="100" [(ngModel)]="r.porcentaje" placeholder="%"> %
+                <input type="number" min="1" [(ngModel)]="r.cantidad" placeholder="cantidad">
+                <span class="regla-hint">desbloquear hasta {{ r.cantidad }} ganador(es) al llegar al {{ r.porcentaje }}%</span>
+                <button type="button" class="btn-small" (click)="removeRegla(s.id, i)">Quitar</button>
+              </div>
+              <div class="reglas-actions">
+                <button type="button" class="btn-secondary" (click)="addRegla(s.id)">Añadir hito</button>
+                <button type="button" class="btn-primary" [disabled]="reglasSavingId === s.id" (click)="guardarReglas(s.id)">
+                  {{ reglasSavingId === s.id ? 'Guardando...' : 'Guardar reglas' }}
+                </button>
+              </div>
+            </ng-container>
+          </div>
+        </div>
         <div class="sorteo-actions">
           <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
           <button
@@ -382,6 +406,9 @@
       <h2>Números bendecidos vendidos (entregar premio anticipado)</h2>
       <p class="muted">Cuando un cliente paga y su stiker coincide con un número bendecido, el ganador aparece aquí al instante (la lista se actualiza sola cada 10 s). Entregue el premio y notifique al cliente.</p>
       <p class="muted">Si una compra coincide y no aparece, use «Revisar ventas de nuevo» para forzar la detección.</p>
+      <div *ngIf="beneficiosPendientes.length > 0" class="alert-pendientes">
+        <strong>Hay {{ beneficiosPendientes.length }} ganador(es) pendiente(s)</strong> (esperando umbral de venta para desbloquearse). Solo tú los ves; el cliente no recibe premio ni notificación hasta que se desbloquee.
+      </div>
       <button type="button" class="btn-secondary" [disabled]="revisandoBeneficios" (click)="revisarBeneficios()">
         {{ revisandoBeneficios ? 'Revisando...' : 'Revisar ventas de nuevo' }}
       </button>
@@ -391,22 +418,42 @@
             <tr>
               <th>Fecha</th>
               <th>Sorteo</th>
+              <th>Estado</th>
               <th>Cédula</th>
               <th>Nombre</th>
               <th>Número</th>
               <th>Email</th>
               <th>Teléfono</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let b of beneficios">
               <td>{{ formatDate(b.created_at) }}</td>
               <td>{{ b.sorteo_nombre || ('Sorteo #' + b.sorteo_id) }}</td>
+              <td>
+                <span class="badge" [class.pending]="b.desbloqueado === false">
+                  {{ b.desbloqueado === false ? 'Pendiente' : 'Desbloqueado' }}
+                </span>
+              </td>
               <td>{{ b.cedula }}</td>
               <td>{{ b.nombre }}</td>
               <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
               <td>{{ b.email }}</td>
               <td>{{ b.telefono }}</td>
+              <td>
+                <button
+                  *ngIf="b.desbloqueado !== false"
+                  type="button"
+                  class="btn-whatsapp"
+                  [disabled]="!b.telefono"
+                  (click)="contactarWhatsApp(b)"
+                  title="Contactar por WhatsApp"
+                >
+                  WhatsApp
+                </button>
+                <span *ngIf="b.desbloqueado === false" class="muted">—</span>
+              </td>
             </tr>
           </tbody>
         </table>

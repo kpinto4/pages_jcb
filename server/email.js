@@ -94,3 +94,37 @@ export async function enviarComprobante(order, items = []) {
     return false;
   }
 }
+
+/** Notifica al admin que un ganador de anticipado fue desbloqueado (para contactar y entregar premio). */
+export async function enviarNotificacionGanadorDesbloqueado(beneficio) {
+  const adminEmail = (process.env.ADMIN_EMAIL || process.env.SMTP_USER || '').trim();
+  if (!configurado || !transporter || !adminEmail) return false;
+  const nombre = (beneficio?.nombre || '').trim() || 'Cliente';
+  const sorteo = beneficio?.sorteo_nombre || 'Anticipado';
+  const numero = `${beneficio?.numero_a ?? ''}-${beneficio?.numero_b ?? ''}`;
+  const telefono = (beneficio?.telefono || '').trim().replace(/\D/g, '');
+  const fromAddr = (process.env.EMAIL_FROM || user || 'noreply@example.com').trim();
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:1rem;">
+    <h3 style="color:#166534;">Ganador de anticipado desbloqueado</h3>
+    <p><strong>Sorteo:</strong> ${sorteo}</p>
+    <p><strong>Número ganador:</strong> ${numero}</p>
+    <p><strong>Nombre:</strong> ${nombre}</p>
+    <p><strong>Cédula:</strong> ${beneficio?.cedula || '-'}</p>
+    <p><strong>Email:</strong> ${beneficio?.email || '-'}</p>
+    <p><strong>Teléfono:</strong> ${beneficio?.telefono || '-'}</p>
+    <p>Contacta al ganador para entregar el premio.</p>
+  </body></html>`;
+  try {
+    await transporter.sendMail({
+      from: fromAddr,
+      to: adminEmail,
+      subject: `[JCB] Ganador anticipado: ${nombre} - ${numero}`,
+      html
+    });
+    console.log('Admin notificado de ganador desbloqueado:', adminEmail);
+    return true;
+  } catch (err) {
+    console.error('Error notificando admin:', err.message);
+    return false;
+  }
+}

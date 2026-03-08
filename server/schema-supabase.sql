@@ -140,3 +140,16 @@ CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 -- Índices compuestos para acelerar consultas frecuentes (inicio, sorteos, stikers)
 CREATE INDEX IF NOT EXISTS idx_sorteos_tipo_estado_fecha ON sorteos(tipo, estado, fecha);
 CREATE INDEX IF NOT EXISTS idx_sorteos_mayor_estado ON sorteos(sorteo_mayor_id, estado);
+
+-- Reglas de anticipados por campaña (Premio Mayor). Sin reglas = desbloqueo inmediato (comportamiento anterior).
+CREATE TABLE IF NOT EXISTS anticipados_reglas (
+  id SERIAL PRIMARY KEY,
+  sorteo_mayor_id INTEGER NOT NULL REFERENCES sorteos(id) ON DELETE CASCADE,
+  porcentaje INTEGER NOT NULL,
+  cantidad INTEGER NOT NULL DEFAULT 1,
+  UNIQUE(sorteo_mayor_id, porcentaje)
+);
+CREATE INDEX IF NOT EXISTS idx_anticipados_reglas_mayor ON anticipados_reglas(sorteo_mayor_id);
+
+-- beneficios_anticipados: desbloqueado = false = pendiente (no mostrar en home, admin sí lo ve). true = desbloqueado (mostrar, entregar premio).
+ALTER TABLE beneficios_anticipados ADD COLUMN IF NOT EXISTS desbloqueado BOOLEAN DEFAULT true;

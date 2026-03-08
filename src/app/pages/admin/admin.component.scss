@@ -252,6 +252,11 @@
     background: var(--accent-light);
     color: var(--accent);
   }
+
+  &.pending {
+    background: rgba(251, 191, 36, 0.2);
+    color: #b45309;
+  }
 }
 
 .sorteo-form {
@@ -667,4 +672,109 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* Reglas de anticipados (colapsable en Premio Mayor) */
+.reglas-anticipados-wrap {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.reglas-toggle {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  font-weight: 500;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.reglas-panel {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+
+  .muted.small {
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .regla-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+
+    input[type="number"] {
+      width: 60px;
+      padding: 0.4rem 0.5rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .regla-hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  }
+
+  .reglas-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+}
+
+.btn-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--text);
+  }
+}
+
+.alert-pendientes {
+  padding: 0.75rem 1rem;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(180, 83, 9, 0.4);
+  border-radius: var(--radius);
+  color: #92400e;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.btn-whatsapp {
+  background: #25d366;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: #20ba5a;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }

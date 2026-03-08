@@ -62,6 +62,13 @@ export interface BeneficioAnticipado {
   email: string | null;
   telefono: string | null;
   created_at: string;
+  /** true = desbloqueado (contactar y entregar premio), false = pendiente de umbral */
+  desbloqueado?: boolean;
+}
+
+export interface ReglaAnticipado {
+  porcentaje: number;
+  cantidad: number;
 }
 
 export interface AppConfig {
@@ -188,6 +195,18 @@ export class AdminService {
     return this.http.post<SorteoGanadorResponse>(`${this.base}/api/admin/sorteos/${id}/realizar`, {
       numero_ganador: numero_ganador.replace(/\D/g, '').slice(0, 4)
     }).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
+    );
+  }
+
+  getReglasAnticipados(sorteoMayorId: number): Observable<{ reglas: ReglaAnticipado[] } | null> {
+    return this.http.get<{ reglas: ReglaAnticipado[] }>(`${this.base}/api/admin/sorteos/${sorteoMayorId}/reglas-anticipados`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
+  }
+
+  patchReglasAnticipados(sorteoMayorId: number, body: { reglas: ReglaAnticipado[] }): Observable<{ reglas: ReglaAnticipado[] } | null> {
+    return this.http.patch<{ reglas: ReglaAnticipado[] }>(`${this.base}/api/admin/sorteos/${sorteoMayorId}/reglas-anticipados`, body).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
   }

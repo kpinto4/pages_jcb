@@ -751,7 +751,8 @@ app.get('/api/admin/beneficios', async (req, res) => {
   try {
     const rows = await db.prepare(`
       SELECT b.id, b.sorteo_id, s.nombre as sorteo_nombre, b.order_id,
-             b.numero_a, b.numero_b, b.cedula, b.nombre, b.email, b.telefono, b.created_at
+             b.numero_a, b.numero_b, b.cedula, b.nombre, b.email, b.telefono, b.created_at,
+             COALESCE(b.desbloqueado, true) as desbloqueado
       FROM beneficios_anticipados b
       LEFT JOIN sorteos s ON s.id = b.sorteo_id
       ORDER BY b.created_at DESC
@@ -884,7 +885,7 @@ app.get('/api/sorteos/home', async (req, res) => {
         const beneficios = await db.prepare(`
           SELECT DISTINCT ON (sorteo_id) sorteo_id, numero_a, numero_b
           FROM beneficios_anticipados
-          WHERE sorteo_id IN (${placeholders})
+          WHERE sorteo_id IN (${placeholders}) AND COALESCE(desbloqueado, true) = true
           ORDER BY sorteo_id, id ASC
         `).all(...sorteoIds);
         for (const b of beneficios) beneficiosMap[b.sorteo_id] = b;
@@ -929,6 +930,48 @@ app.get('/api/sorteos/:id', async (req, res) => {
   }
 });
 
+// ----- REGLAS DE ANTICIPADOS (por Premio Mayor) -----
+app.get('/api/admin/sorteos/:id/reglas-anticipados', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sorteo = await db.prepare('SELECT id, tipo FROM sorteos WHERE id = ?').get(id);
+    if (!sorteo || (sorteo.tipo || '').toLowerCase() !== 'mayor') {
+      return res.status(404).json({ error: 'Premio Mayor no encontrado' });
+    }
+    const reglas = await getReglasAnticipados(id);
+    res.json(toJSONSafe({ reglas }));
+  } catch (err) {
+    console.error('Error GET reglas-anticipados:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/admin/sorteos/:id/reglas-anticipados', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sorteo = await db.prepare('SELECT id, tipo FROM sorteos WHERE id = ?').get(id);
+    if (!sorteo || (sorteo.tipo || '').toLowerCase() !== 'mayor') {
+      return res.status(404).json({ error: 'Premio Mayor no encontrado' });
+    }
+    const { reglas } = req.body;
+    if (!Array.isArray(reglas)) {
+      return res.status(400).json({ error: 'reglas debe ser un array' });
+    }
+    await db.prepare('DELETE FROM anticipados_reglas WHERE sorteo_mayor_id = ?').run(id);
+    const insert = db.prepare('INSERT INTO anticipados_reglas (sorteo_mayor_id, porcentaje, cantidad) VALUES (?, ?, ?)');
+    for (const r of reglas) {
+      const p = parseInt(r.porcentaje, 10);
+      const c = Math.max(1, parseInt(r.cantidad, 10) || 1);
+      if (p >= 0 && p <= 100) await insert.run(id, p, c);
+    }
+    const updated = await getReglasAnticipados(id);
+    res.json(toJSONSafe({ reglas: updated }));
+  } catch (err) {
+    console.error('Error PATCH reglas-anticipados:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function randomNumero4() {
   return Math.floor(Math.random() * 10000).toString().padStart(4, '0');
 }
@@ -957,12 +1000,83 @@ async function fillStikerSlots5000(txOrDb = db) {
   }
 }
 
+/** Obtiene reglas de anticipados para un premio mayor. Si no hay tabla o filas, retorna []. */
+async function getReglasAnticipados(sorteoMayorId) {
+  if (!sorteoMayorId) return [];
+  try {
+    const rows = await db.prepare(`
+      SELECT porcentaje, cantidad FROM anticipados_reglas
+      WHERE sorteo_mayor_id = ?
+      ORDER BY porcentaje ASC
+    `).all(sorteoMayorId);
+    return rows || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** % de stikers vendidos (pagados) para la campaña del sorteo_mayor_id. 5000 = 100%. */
+async function getPctVendidos(sorteoMayorId) {
+  const total = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+  const totalSlots = Number(total?.n ?? 5000);
+  if (totalSlots === 0) return 0;
+  const sold = await db.prepare(`
+    SELECT COUNT(*) as n FROM stiker_slots ss
+    JOIN orders o ON o.id = ss.order_id AND o.status = 'paid' AND o.sorteo_mayor_id = ?
+  `).get(sorteoMayorId);
+  return (Number(sold?.n ?? 0) / totalSlots) * 100;
+}
+
+/** Desbloquea pendientes según reglas y % vendidos. Notifica al admin por cada desbloqueado. */
+async function desbloquearPendientes(sorteoMayorId) {
+  const reglas = await getReglasAnticipados(sorteoMayorId);
+  if (reglas.length === 0) return;
+  const pct = await getPctVendidos(sorteoMayorId);
+  let totalToUnlock = 0;
+  for (const r of reglas) {
+    if (r.porcentaje <= pct) totalToUnlock += Number(r.cantidad ?? 1);
+  }
+  const anticipadoIds = (await db.prepare(`
+    SELECT id FROM sorteos WHERE sorteo_mayor_id = ? AND tipo = 'anticipado'
+  `).all(sorteoMayorId)).map(x => x.id);
+  if (anticipadoIds.length === 0) return;
+  const placeholders = anticipadoIds.map(() => '?').join(',');
+  const yaDesbloqueados = await db.prepare(`
+    SELECT COUNT(*) as n FROM beneficios_anticipados
+    WHERE sorteo_id IN (${placeholders}) AND COALESCE(desbloqueado, true) = true
+  `).get(...anticipadoIds);
+  const numToUnlock = Math.max(0, totalToUnlock - Number(yaDesbloqueados?.n ?? 0));
+  if (numToUnlock === 0) return;
+  const pendientes = await db.prepare(`
+    SELECT b.id, b.sorteo_id, b.order_id, b.numero_a, b.numero_b, b.cedula, b.nombre, b.email, b.telefono, s.nombre as sorteo_nombre
+    FROM beneficios_anticipados b
+    JOIN sorteos s ON s.id = b.sorteo_id
+    WHERE b.sorteo_id IN (${placeholders}) AND COALESCE(b.desbloqueado, true) = false
+    ORDER BY b.created_at ASC
+    LIMIT ?
+  `).all(...anticipadoIds, numToUnlock);
+  const idsToUnlock = pendientes.map(p => p.id);
+  if (idsToUnlock.length === 0) return;
+  const updatePlaceholders = idsToUnlock.map(() => '?').join(',');
+  await db.prepare(`
+    UPDATE beneficios_anticipados SET desbloqueado = true
+    WHERE id IN (${updatePlaceholders})
+  `).run(...idsToUnlock);
+  const { enviarNotificacionGanadorDesbloqueado } = await import('./email.js');
+  for (const p of pendientes) {
+    enviarNotificacionGanadorDesbloqueado(p).catch(e => console.warn('Email admin ganador:', e?.message));
+  }
+}
+
 /** Registra beneficios anticipados cuando una orden queda pagada. Solo coincide con números bendecidos de anticipados de la misma campaña (mismo premio mayor). Sin duplicados. */
 async function registrarBeneficiosAnticipados(orderId) {
   const order = await db.prepare('SELECT cedula, nombre, email, telefono, sorteo_mayor_id FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
   if (!order) return;
   const items = await db.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId);
   if (items.length === 0) return;
+
+  const reglas = await getReglasAnticipados(order.sorteo_mayor_id);
+  const usarDesbloqueo = reglas.length > 0;
 
   const toKey = (a, b) => `${pad4(a)}-${pad4(b)}`;
   const selectedKeys = items.map((i) => ({
@@ -985,8 +1099,8 @@ async function registrarBeneficiosAnticipados(orderId) {
       `).all();
 
   const insertBenef = db.prepare(`
-    INSERT INTO beneficios_anticipados (sorteo_id, order_id, numero_a, numero_b, cedula, nombre, email, telefono)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO beneficios_anticipados (sorteo_id, order_id, numero_a, numero_b, cedula, nombre, email, telefono, desbloqueado)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const existsBenefEnSorteo = db.prepare(`
     SELECT 1 FROM beneficios_anticipados
@@ -1038,9 +1152,12 @@ async function registrarBeneficiosAnticipados(orderId) {
         ? await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB, order.sorteo_mayor_id)
         : await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB);
       if (matches && !yaEnEsteSorteo && !yaGanoOtroAnticipado) {
-        await insertBenef.run(srt.id, orderId, s.numeroA, s.numeroB, order.cedula || null, order.nombre || null, order.email || null, order.telefono || null);
+        await insertBenef.run(srt.id, orderId, s.numeroA, s.numeroB, order.cedula || null, order.nombre || null, order.email || null, order.telefono || null, usarDesbloqueo ? false : true);
       }
     }
+  }
+  if (usarDesbloqueo && order.sorteo_mayor_id) {
+    await desbloquearPendientes(order.sorteo_mayor_id);
   }
 }
 

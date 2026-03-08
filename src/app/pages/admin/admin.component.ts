@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, ReglaAnticipado } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -75,6 +75,12 @@ export class AdminComponent implements OnInit, OnDestroy {
   private beneficiosPollingId: ReturnType<typeof setInterval> | null = null;
   private readonly BENEFICIOS_POLL_MS = 10000;
   private readonly destroy$ = new Subject<void>();
+
+  /** Reglas de anticipados: key = sorteo mayor id */
+  reglasAnticipados: { [id: number]: ReglaAnticipado[] } = {};
+  reglasExpandedId: number | null = null;
+  reglasLoadingId: number | null = null;
+  reglasSavingId: number | null = null;
 
   constructor(
     private adminService: AdminService,
@@ -657,5 +663,75 @@ export class AdminComponent implements OnInit, OnDestroy {
   /** trackBy para *ngFor de grupos terminados — evita recrear el DOM cuando el getter devuelve nuevos wrappers */
   trackByGrupoId(_: number, g: { mayor: Sorteo; anticipados: Sorteo[] }): number {
     return g.mayor.id;
+  }
+
+  /** Beneficios con desbloqueado=false (pendientes de umbral, solo admin los ve) */
+  get beneficiosPendientes(): BeneficioAnticipado[] {
+    return this.beneficios.filter((b) => b.desbloqueado === false);
+  }
+
+  toggleReglas(s: Sorteo): void {
+    if ((s.tipo || '').toLowerCase() !== 'mayor') return;
+    const id = s.id;
+    if (this.reglasExpandedId === id) {
+      this.reglasExpandedId = null;
+      return;
+    }
+    this.reglasExpandedId = id;
+    this.cargarReglas(id);
+  }
+
+  cargarReglas(sorteoMayorId: number): void {
+    this.reglasLoadingId = sorteoMayorId;
+    this.adminService.getReglasAnticipados(sorteoMayorId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: r?.reglas ?? [] };
+        this.reglasLoadingId = null;
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [] };
+        this.reglasLoadingId = null;
+      }
+    });
+  }
+
+  addRegla(sorteoMayorId: number): void {
+    const list = this.reglasAnticipados[sorteoMayorId] ?? [];
+    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [...list, { porcentaje: 50, cantidad: 1 }] };
+  }
+
+  removeRegla(sorteoMayorId: number, idx: number): void {
+    const list = [...(this.reglasAnticipados[sorteoMayorId] ?? [])];
+    list.splice(idx, 1);
+    this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: list };
+  }
+
+  guardarReglas(sorteoMayorId: number): void {
+    this.reglasSavingId = sorteoMayorId;
+    const reglas = this.reglasAnticipados[sorteoMayorId] ?? [];
+    this.adminService.patchReglasAnticipados(sorteoMayorId, { reglas }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        if (r?.reglas) this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: r.reglas };
+        this.reglasSavingId = null;
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.reglasSavingId = null;
+        this.error = err?.error?.error || err?.message || 'No se pudieron guardar las reglas.';
+      }
+    });
+  }
+
+  /** Abre WhatsApp con mensaje predefinido para contactar al ganador */
+  contactarWhatsApp(b: BeneficioAnticipado): void {
+    const tel = (b.telefono || '').replace(/\D/g, '');
+    if (!tel) {
+      alert('Este ganador no tiene teléfono registrado.');
+      return;
+    }
+    const num = tel.startsWith('57') ? tel : '57' + tel;
+    const msg = encodeURIComponent(`¡Felicidades! Ganaste el premio anticipado del sorteo "${b.sorteo_nombre || 'Sorteo'}". Tu número ganador fue ${b.numero_a}-${b.numero_b}. ¿Cómo podemos coordinar la entrega del premio?`);
+    window.open(`https://wa.me/${num}?text=${msg}`, '_blank');
   }
 }
