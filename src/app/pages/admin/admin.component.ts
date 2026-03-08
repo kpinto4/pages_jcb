@@ -78,6 +78,12 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   /** Reglas de anticipados: key = sorteo mayor id */
   reglasAnticipados: { [id: number]: ReglaAnticipado[] } = {};
+  /** Reglas por defecto cuando la API devuelve vacío o falla */
+  readonly REGLAS_DEFAULT: ReglaAnticipado[] = [
+    { porcentaje: 20, cantidad: 1 }, { porcentaje: 30, cantidad: 1 }, { porcentaje: 40, cantidad: 1 },
+    { porcentaje: 50, cantidad: 1 }, { porcentaje: 60, cantidad: 1 }, { porcentaje: 70, cantidad: 1 },
+    { porcentaje: 80, cantidad: 1 }, { porcentaje: 90, cantidad: 2 }
+  ];
   reglasExpandedId: number | null = null;
   reglasLoadingId: number | null = null;
   reglasSavingId: number | null = null;
@@ -685,12 +691,13 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.reglasLoadingId = sorteoMayorId;
     this.adminService.getReglasAnticipados(sorteoMayorId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
-        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: r?.reglas ?? [] };
+        const reglas = r?.reglas?.length ? r.reglas : this.REGLAS_DEFAULT;
+        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: reglas };
         this.reglasLoadingId = null;
       },
       error: (err) => {
         if (err?.status === 401) this.on401();
-        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [] };
+        this.reglasAnticipados = { ...this.reglasAnticipados, [sorteoMayorId]: [...this.REGLAS_DEFAULT] };
         this.reglasLoadingId = null;
       }
     });
