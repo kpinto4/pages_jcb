@@ -190,19 +190,17 @@
             {{ reglasExpandedId === s.id ? 'Reglas de anticipados ▲' : 'Reglas de anticipados ▾' }}
           </button>
           <div *ngIf="reglasExpandedId === s.id" class="reglas-panel">
-            <p class="muted small">Define umbrales de % vendido para desbloquear ganadores. Sin reglas = todos se desbloquean al instante.</p>
+            <p class="muted small">Por defecto: primer anticipado al 20%, luego cada 10%, y al 90% se desbloquean los que falten. Puedes modificar los porcentajes y cantidades.</p>
             <div *ngIf="reglasLoadingId === s.id" class="loading">Cargando reglas...</div>
             <ng-container *ngIf="reglasLoadingId !== s.id">
               <div *ngFor="let r of (reglasAnticipados[s.id] || []); let i = index" class="regla-row">
                 <input type="number" min="1" max="100" [(ngModel)]="r.porcentaje" placeholder="%"> %
                 <input type="number" min="1" [(ngModel)]="r.cantidad" placeholder="cantidad">
-                <span class="regla-hint">desbloquear hasta {{ r.cantidad }} ganador(es) al llegar al {{ r.porcentaje }}%</span>
-                <button type="button" class="btn-small" (click)="removeRegla(s.id, i)">Quitar</button>
+                <span class="regla-hint">{{ r.cantidad }} ganador(es) al llegar al {{ r.porcentaje }}%</span>
               </div>
               <div class="reglas-actions">
-                <button type="button" class="btn-secondary" (click)="addRegla(s.id)">Añadir hito</button>
                 <button type="button" class="btn-primary" [disabled]="reglasSavingId === s.id" (click)="guardarReglas(s.id)">
-                  {{ reglasSavingId === s.id ? 'Guardando...' : 'Guardar reglas' }}
+                  {{ reglasSavingId === s.id ? 'Guardando...' : 'Guardar cambios' }}
                 </button>
               </div>
               <!-- Lista: en qué momento se desbloquea cada anticipado -->
@@ -214,9 +212,6 @@
                   </li>
                 </ul>
               </div>
-              <p *ngIf="getListaMomentosDesbloqueo(s.id).length === 0 && (reglasAnticipados[s.id] || []).length > 0" class="muted small">
-                Añade hitos y guarda para ver la lista de momentos.
-              </p>
             </ng-container>
           </div>
         </div>
