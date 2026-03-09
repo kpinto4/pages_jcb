@@ -46,6 +46,43 @@ try {
   console.warn('No se pudo crear uploadsDir:', e.message);
 }
 
+/** Rutas donde buscar archivos de uploads (por si el servidor corre con otro cwd). */
+const uploadsSearchDirs = [
+  uploadsDir,
+  path.join(process.cwd(), 'server', 'public', 'uploads'),
+  path.join(process.cwd(), 'public', 'uploads')
+];
+
+const MIME_BY_EXT = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+
+/**
+ * Si imagen_url contiene /uploads/filename, lee el archivo y devuelve data URL en base64.
+ * Evita peticiones directas al backend (HTTP) cuando la página es HTTPS (Mixed Content).
+ */
+function embedImageBase64(imagenUrl) {
+  if (!imagenUrl || typeof imagenUrl !== 'string') return null;
+  const match = String(imagenUrl).trim().match(/\/uploads\/([^/?#]+)$/);
+  if (!match) return null;
+  const filename = match[1];
+  let filePath = null;
+  for (const dir of uploadsSearchDirs) {
+    const p = path.join(dir, filename);
+    if (fs.existsSync(p)) {
+      filePath = p;
+      break;
+    }
+  }
+  if (!filePath) return null;
+  try {
+    const buf = fs.readFileSync(filePath);
+    const ext = path.extname(filename).toLowerCase();
+    const mime = MIME_BY_EXT[ext] || 'image/jpeg';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
+}
+
 let db;
 let dbInitError = null;
 try {
@@ -910,10 +947,22 @@ app.get('/api/sorteos/home', async (req, res) => {
       LIMIT 6
     `).all();
 
+    // Incrustar imágenes en base64 para evitar peticiones a HTTP :3012 (Mixed Content con HTTPS).
+    let principalOut = principal || null;
+    if (principalOut?.imagen_url) {
+      const dataUrl = embedImageBase64(principalOut.imagen_url);
+      if (dataUrl) principalOut = { ...principalOut, imagen_base64: dataUrl };
+    }
+    const mayoresOut = mayoresRealizados.map((row) => {
+      if (!row?.imagen_url) return row;
+      const dataUrl = embedImageBase64(row.imagen_url);
+      return dataUrl ? { ...row, imagen_base64: dataUrl } : row;
+    });
+
     res.json(toJSONSafe({
-      principal: principal || null,
+      principal: principalOut,
       anticipadosActuales,
-      mayoresRealizados
+      mayoresRealizados: mayoresOut
     }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);

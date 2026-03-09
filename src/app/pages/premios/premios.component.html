@@ -16,9 +16,10 @@
     >
       <div class="card-img-wrap">
         <img
-          [src]="imageSrc(s.imagen_url)"
+          [src]="imageSrc(s)"
           [alt]="s.ganador_nombre ? ('Premio: ' + s.ganador_nombre) : s.nombre"
           class="card-img"
+          loading="lazy"
           (error)="onImgError($event)"
         >
       </div>

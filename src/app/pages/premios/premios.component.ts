@@ -69,8 +69,9 @@ export class PremiosComponent {
     if (img) img.src = 'assets/img/premio-mayor.jpg';
   }
 
-  /** URL de imagen para mostrar (corrige localhost en despliegue). */
-  imageSrc(imagenUrl: string | null | undefined): string {
-    return resolveImageUrl(imagenUrl) || 'assets/img/premio-mayor.jpg';
+  /** Preferir imagen_base64 (evita HTTP/Mixed Content); si no, usar imagen_url reescrita. */
+  imageSrc(sorteo: Sorteo): string {
+    if (sorteo?.imagen_base64) return sorteo.imagen_base64;
+    return resolveImageUrl(sorteo?.imagen_url) || 'assets/img/premio-mayor.jpg';
   }
 }

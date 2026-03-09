@@ -12,6 +12,8 @@ export interface Sorteo {
   estado: string;
   premio_descripcion?: string | null;
   imagen_url?: string | null;
+  /** Incluida por el API para evitar peticiones a HTTP (Mixed Content). Usar preferentemente sobre imagen_url. */
+  imagen_base64?: string | null;
   numero_ganador_a?: string | null;
   numero_ganador_b?: string | null;
   numeros_beneficiados?: string | null;
