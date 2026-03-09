@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  /** Vacío = mismo origen (Express sirve frontend + API). Si frontend y backend van en dominios/puertos distintos, pon aquí la URL del API. */
-  paymentApiUrl: ''
+  /** URL del backend en el servidor. Así el build siempre llama al API correcto (también si abres por túnel/localhost). */
+  paymentApiUrl: 'http://n1.voriamtechnologies.com:3012'
 };

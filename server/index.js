@@ -156,26 +156,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-// ----- FRONTEND ANGULAR (producción: servir build estático) -----
-const distPath = path.join(__dirname, '..', 'dist', 'pages_jcb', 'browser');
-const distPathAlt = path.join(__dirname, '..', 'dist', 'pages_jcb');
-const staticPath = fs.existsSync(distPath) ? distPath : (fs.existsSync(distPathAlt) ? distPathAlt : null);
-
-if (staticPath) {
-  app.use(express.static(staticPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
-    res.sendFile(path.join(staticPath, 'index.html'));
+// ----- RAÍZ (para que no salga "Cannot GET /" al abrir la URL del servidor) -----
+app.get('/', (req, res) => {
+  res.json({
+    app: 'Juego de la Ciudad Bonita — API',
+    message: 'Backend en ejecución. La app web consume /api/*.',
+    health: '/api/health'
   });
-} else {
-  app.get('/', (req, res) => {
-    res.json({
-      app: 'Juego de la Ciudad Bonita — API',
-      message: 'Backend en ejecución. Ejecuta "npm run build:prod" y reinicia para servir el frontend.',
-      health: '/api/health'
-    });
-  });
-}
+});
 
 // ----- HEALTH -----
 app.get('/api/health', (req, res) => {
