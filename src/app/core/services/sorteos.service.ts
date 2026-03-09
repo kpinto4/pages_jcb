@@ -56,7 +56,10 @@ export class SorteosService {
     if (!this.homeDataCache$) {
       const base = this.apiUrl;
       this.homeDataCache$ = this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
-        catchError(() => of(null)),
+        catchError((err) => {
+          console.warn('SorteosService: error al cargar /api/sorteos/home', err?.message ?? err);
+          return of(null);
+        }),
         shareReplay({ bufferSize: 1, refCount: true })
       );
     }
@@ -66,7 +69,10 @@ export class SorteosService {
   getProgreso(): Observable<ProgresoResponse | null> {
     const base = this.apiUrl;
     return this.http.get<ProgresoResponse>(`${base}/api/progreso`).pipe(
-      catchError(() => of(null))
+      catchError((err) => {
+        console.warn('SorteosService: error al cargar /api/progreso', err?.message ?? err);
+        return of(null);
+      })
     );
   }
 }

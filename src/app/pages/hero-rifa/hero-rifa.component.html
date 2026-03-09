@@ -14,13 +14,16 @@
       <h1 *ngIf="principal">
         {{ principal.nombre }}
       </h1>
-      <h1 *ngIf="!principal" class="hero-proximamente">
+      <h1 *ngIf="!principal && !loadError" class="hero-proximamente">
         Próximamente tendremos más sorteos
       </h1>
+      <p *ngIf="loadError" class="hero-error" role="alert">
+        No se pudo cargar la información del sorteo. Comprueba tu conexión.
+      </p>
       <p *ngIf="principal">
         {{ principal.premio_descripcion || 'Participa por increíbles premios comprando tus stikers' }}
       </p>
-      <p *ngIf="!principal">
+      <p *ngIf="!principal && !loadError">
         Vuelve pronto para participar en el próximo sorteo.
       </p>
 

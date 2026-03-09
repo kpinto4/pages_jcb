@@ -27,6 +27,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
+  /** true cuando la API falló al cargar (muestra mensaje en el hero). */
+  loadError = false;
 
   private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly destroy$ = new Subject<void>();
@@ -52,26 +54,35 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   }
 
   private loadHomeData(): void {
-    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe((data) => {
-      if (!data) return;
-      this.principal = data.principal ?? null;
-      if (!this.principal) return;
-      if (this.principal.imagen_base64) {
-        this.heroImageUrl = this.principal.imagen_base64;
-      } else if (this.principal.imagen_url) {
-        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data) => {
+        if (!data) {
+          this.loadError = true;
+          return;
+        }
+        this.loadError = false;
+        this.principal = data.principal ?? null;
+        if (!this.principal) return;
+        if (this.principal.imagen_base64) {
+          this.heroImageUrl = this.principal.imagen_base64;
+        } else if (this.principal.imagen_url) {
+          this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+        }
+        this.startCountdownFromDate(this.principal.fecha);
+      },
+      error: () => {
+        this.loadError = true;
       }
-      this.startCountdownFromDate(this.principal.fecha);
     });
   }
 
   private loadProgreso(): void {
-    this.sorteosService.getProgreso().pipe(takeUntil(this.destroy$)).subscribe((data: ProgresoResponse | null) => {
-      if (!data) {
-        return;
+    this.sorteosService.getProgreso().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data: ProgresoResponse | null) => {
+        if (!data) return;
+        this.soldStikers = data.totalStikersSold;
+        this.totalStikers = data.totalStikers;
       }
-      this.soldStikers = data.totalStikersSold;
-      this.totalStikers = data.totalStikers;
     });
   }
 

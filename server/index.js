@@ -7,6 +7,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import fs from 'fs';
@@ -126,7 +127,8 @@ async function scheduleCleanup() {
 }
 
 const app = express();
-const port = process.env.PORT || 3000;
+/** Debe coincidir con backendPort en Angular (environment). Por defecto 3012 (Front=3015, Back=3012). */
+const port = process.env.PORT || 3012;
 
 // ----- Wompi (Colombia) — única pasarela de pago -----
 const wompiPublicKey = (process.env.WOMPI_PUBLIC_KEY || '').trim();
@@ -168,6 +170,9 @@ if (process.env.NODE_ENV === 'production') {
 const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
+
+// Seguridad: cabeceras HTTP (X-Content-Type-Options, etc.)
+app.use(helmet());
 
 // CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
 const corsOrigin = process.env.ALLOWED_ORIGIN || true;
@@ -1554,6 +1559,9 @@ app.get('/api/progreso', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Servidor en http://localhost:${port}`);
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGIN) {
+    console.warn('⚠️  En producción define ALLOWED_ORIGIN en server/.env (ej. https://tudominio.com) para restringir CORS.');
+  }
   if (!wompiEnabled) {
     console.warn('⚠️  Wompi no configurado. Define WOMPI_PUBLIC_KEY y WOMPI_INTEGRITY_SECRET en server/.env para pagos con tarjeta, o usa "Simular pago".');
   } else {

@@ -1,5 +1,9 @@
 <app-hero-rifa></app-hero-rifa>
 
+<section *ngIf="errorAlCargar" class="error-carga-section" role="alert">
+  <p class="error-carga">No se pudo cargar la información. Comprueba tu conexión y que el servidor esté en marcha.</p>
+</section>
+
 <!-- Cuadrícula de 10 anticipados del sorteo actual (números revelados cuando ya hay ganador) -->
 <section class="anticipados-grid-section" *ngIf="anticipadosActuales.length > 0">
   <h2>Números bendecidos del sorteo actual</h2>

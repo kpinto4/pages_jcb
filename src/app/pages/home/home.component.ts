@@ -23,15 +23,27 @@ export class HomeComponent implements OnInit, OnDestroy {
   anticipadosActuales: AnticipadoHome[] = [];
   mayoresRealizados: (Sorteo & { ganador_nombre?: string })[] = [];
   loadingHome = true;
+  /** true cuando la API falló o devolvió null (muestra mensaje al usuario). */
+  errorAlCargar = false;
 
   constructor(private sorteosService: SorteosService) {}
 
   ngOnInit(): void {
-    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe((data) => {
-      this.loadingHome = false;
-      if (!data) return;
-      this.anticipadosActuales = data.anticipadosActuales ?? [];
-      this.mayoresRealizados = data.mayoresRealizados ?? [];
+    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data) => {
+        this.loadingHome = false;
+        if (!data) {
+          this.errorAlCargar = true;
+          return;
+        }
+        this.errorAlCargar = false;
+        this.anticipadosActuales = data.anticipadosActuales ?? [];
+        this.mayoresRealizados = data.mayoresRealizados ?? [];
+      },
+      error: () => {
+        this.loadingHome = false;
+        this.errorAlCargar = true;
+      }
     });
   }
 

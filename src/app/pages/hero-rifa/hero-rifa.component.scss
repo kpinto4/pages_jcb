@@ -67,6 +67,12 @@
     color: var(--text);
   }
 
+  .hero-error {
+    color: #b91c1c;
+    font-weight: 500;
+    margin-bottom: 1rem;
+  }
+
   .countdown {
     display: flex;
     gap: 1rem;

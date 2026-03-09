@@ -1,16 +1,16 @@
-const BACKEND_PORT = 3012;
+import { environment } from '../../../environments/environment';
 
 /**
- * URL base del backend API en el servidor.
- * VORIAM: front HTTPS 3015, back HTTP 3012. Siempre usamos el mismo host que la página y puerto 3012 en HTTP.
+ * URL base del backend API.
+ * Usa environment.apiBaseUrl si está definido; si no, mismo host + environment.backendPort.
  * Las imágenes del home van en base64 en la respuesta del API para evitar Mixed Content.
  */
 export function getApiUrl(): string {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    return `http://${host}:${BACKEND_PORT}`;
-  }
-  return '';
+  if (typeof window === 'undefined') return '';
+  if (environment.apiBaseUrl) return environment.apiBaseUrl.replace(/\/$/, '');
+  const host = window.location.hostname;
+  const port = environment.backendPort ?? 3012;
+  return `http://${host}:${port}`;
 }
 
 /**
