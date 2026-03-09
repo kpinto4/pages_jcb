@@ -1,4 +1,4 @@
 export const environment = {
   production: false,
-  paymentApiUrl: 'http://localhost:3000'
+  paymentApiUrl: 'http://localhost:3015'
 };

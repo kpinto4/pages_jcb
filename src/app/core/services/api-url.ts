@@ -11,9 +11,13 @@ export function getApiUrl(): string {
     const protocol = window.location.protocol;
     const host = window.location.hostname;
     const isLocal = host === 'localhost' || host === '127.0.0.1';
+
+    // Si NO es local (es decir, es tu dominio real), NO agregues el puerto.
     if (!isLocal) {
-      return `${protocol}//${host}:${BACKEND_PORT}`;
+      return `${protocol}//${host}`; 
     }
+
+    // Para desarrollo local, seguimos usando el puerto 3012.
     return environment.paymentApiUrl || `${protocol}//${host}:${BACKEND_PORT}`;
   }
   return environment.paymentApiUrl || '';
