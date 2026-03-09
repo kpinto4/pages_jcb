@@ -42,7 +42,6 @@ function toJSONSafe(obj) {
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('Uploads:', uploadsDir);
 } catch (e) {
   console.warn('No se pudo crear uploadsDir:', e.message);
 }
@@ -137,11 +136,9 @@ const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 const corsOrigin = process.env.ALLOWED_ORIGIN || true;
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
-// /uploads debe servirse siempre (imágenes) incluso si DB falla
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
-// Si la DB no cargó, solo permitir health, login y /uploads
+// Si la DB no cargó, solo permitir health y admin/login
 app.use((req, res, next) => {
-  if (!db && !req.path.startsWith('/uploads') && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
+  if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
     return res.status(503).json({
       error: 'Base de datos no disponible',
       detail: dbInitError || undefined
@@ -149,6 +146,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -167,15 +165,13 @@ app.get('/', (req, res) => {
 
 // ----- HEALTH -----
 app.get('/api/health', (req, res) => {
-  const base = publicApiUrl || (req.protocol + '://' + (req.get('x-forwarded-host') || req.get('host')));
   res.json({
     ok: true,
     wompi: wompiEnabled,
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
     dbConnected: !!db,
-    dbError: dbInitError || undefined,
-    imageBaseUrl: base.replace(/\/$/, '') + '/uploads'
+    dbError: dbInitError || undefined
   });
 });
 
@@ -233,16 +229,15 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
-// URL pública del backend (para imágenes). Si no está definida, se usa el host de la petición.
-// En despliegue: pon ej. PUBLIC_API_URL=http://n1.voriamtechnologies.com:3012
+// URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
 app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const baseUrl = publicApiUrl || (req.protocol + '://' + (req.get('x-forwarded-host') || req.get('host')));
-    const url = baseUrl.replace(/\/$/, '') + '/uploads/' + req.file.filename;
+    const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
+    const url = baseUrl + '/uploads/' + req.file.filename;
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);
