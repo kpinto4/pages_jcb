@@ -136,9 +136,9 @@ const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 const corsOrigin = process.env.ALLOWED_ORIGIN || true;
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
-// Si la DB no cargó, solo permitir health y admin/login
+// Si la DB no cargó, solo permitir health, login y /uploads (imágenes)
 app.use((req, res, next) => {
-  if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
+  if (!db && !req.path.startsWith('/uploads') && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
     return res.status(503).json({
       error: 'Base de datos no disponible',
       detail: dbInitError || undefined
@@ -165,13 +165,15 @@ app.get('/', (req, res) => {
 
 // ----- HEALTH -----
 app.get('/api/health', (req, res) => {
+  const base = publicApiUrl || (req.protocol + '://' + (req.get('x-forwarded-host') || req.get('host')));
   res.json({
     ok: true,
     wompi: wompiEnabled,
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
     dbConnected: !!db,
-    dbError: dbInitError || undefined
+    dbError: dbInitError || undefined,
+    imageBaseUrl: base.replace(/\/$/, '') + '/uploads'
   });
 });
 
