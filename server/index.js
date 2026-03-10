@@ -132,9 +132,35 @@ const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
-// CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
-const corsOrigin = process.env.ALLOWED_ORIGIN || true;
-app.use(cors({ origin: corsOrigin, credentials: true }));
+// CORS: en producción define ALLOWED_ORIGIN (uno o varios separados por coma, sin barra final).
+// Ej: ALLOWED_ORIGIN=https://tudominio.com o https://app.com,https://www.app.com
+// Vacío o sin definir = en desarrollo se refleja el Origin de la petición (cualquier origen).
+const allowedOriginRaw = (process.env.ALLOWED_ORIGIN || '').trim();
+const allowedOriginsList = allowedOriginRaw
+  ? allowedOriginRaw.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
+  : [];
+
+function getCorsOrigin(origin) {
+  if (allowedOriginsList.length === 0) {
+    return origin || true;
+  }
+  if (!origin) return true;
+  const normalized = origin.replace(/\/+$/, '');
+  return allowedOriginsList.includes(normalized) ? normalized : false;
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowed = getCorsOrigin(origin);
+    if (allowed === false) {
+      return callback(null, false);
+    }
+    callback(null, allowed === true ? true : allowed);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
 app.use(express.json());
 // Si la DB no cargó, solo permitir health y admin/login
 app.use((req, res, next) => {
@@ -146,9 +172,12 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Servir uploads; permitir origen cruzado para que las imágenes carguen cuando el front está en otro dominio
+// Servir uploads; mismo criterio CORS que el API (origen reflejado o permitido en la lista)
 const uploadsCors = (req, res, next) => {
-  res.set('Access-Control-Allow-Origin', corsOrigin === true ? '*' : corsOrigin);
+  const origin = req.get('Origin');
+  const allowed = getCorsOrigin(origin);
+  if (allowed === true) res.set('Access-Control-Allow-Origin', origin || '*');
+  else if (allowed) res.set('Access-Control-Allow-Origin', allowed);
   next();
 };
 const uploadsStatic = express.static(path.join(__dirname, 'public', 'uploads'));
