@@ -2,7 +2,7 @@ import { environment } from '../../../environments/environment';
 
 const BACKEND_PORT = 3012;
 
-/** URL base del backend. En local: localhost:3012; en producción: mismo origen en /api (sin puerto). */
+/** URL base del backend. En local: localhost:3012; en producción: mismo origen en /api o paymentApiUrl si front y API están en dominios distintos. */
 export function getApiUrl(): string {
   if (typeof window === 'undefined') {
     return environment.paymentApiUrl || '';
@@ -10,6 +10,10 @@ export function getApiUrl(): string {
   const host = window.location.hostname;
   if (host === 'localhost' || host === '127.0.0.1') {
     return environment.paymentApiUrl || `http://${host}:${BACKEND_PORT}`;
+  }
+  // Si el front se sirve desde otro dominio (ej. GitHub Pages), usar la URL del API para peticiones e imágenes
+  if (environment.paymentApiUrl) {
+    return environment.paymentApiUrl.replace(/\/$/, '');
   }
   return window.location.origin + '/api';
 }

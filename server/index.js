@@ -146,7 +146,11 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+// Servir uploads; permitir origen cruzado para que las imágenes carguen cuando el front está en otro dominio
+app.use('/uploads', (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', corsOrigin === true ? '*' : corsOrigin);
+  next();
+}, express.static(path.join(__dirname, 'public', 'uploads')));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -229,7 +233,8 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
-// URL pública del API (sin :3012). Ej: https://inversionesjcb.online/api
+// URL pública del API donde se sirve este backend (para que la URL de la imagen guardada sea la correcta).
+// Si el front está en otro dominio (ej. GitHub Pages), pon aquí la URL del API. Ej: https://tu-api.onrender.com o https://tudominio.com/api
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 function buildUploadPublicUrl(req, filename) {
