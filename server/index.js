@@ -229,7 +229,7 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
-// URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
+// URL pública del backend (para URLs de imágenes al subir). Usar ruta /api sin puerto, ej. https://inversionesjcb.online/api o https://n1.voriamtechnologies.com/api
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----

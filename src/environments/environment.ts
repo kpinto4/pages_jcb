@@ -1,4 +1,5 @@
 export const environment = {
   production: false,
-  paymentApiUrl: 'http://localhost:3015'
+  /** Backend en desarrollo local (puerto 3012). */
+  paymentApiUrl: 'http://localhost:3012'
 };
