@@ -232,6 +232,18 @@ app.use('/api/admin', adminAuthMiddleware);
 // URL base pública del API (para URLs de imágenes al subir). Debe ser con /api y sin :3012, ej. https://inversionesjcb.online/api
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
+/** Normaliza imagen_url a la base pública (evita n1... o :3012 en respuestas). Si no hay PUBLIC_API_URL, devuelve la URL tal cual. */
+function normalizeImagenUrl(imagenUrl) {
+  if (!imagenUrl || typeof imagenUrl !== 'string') return imagenUrl;
+  const u = imagenUrl.trim();
+  const match = u.match(/\/uploads\/([^/?#]+)$/i);
+  if (!match) return u;
+  const filename = match[1];
+  if (!publicApiUrl) return u;
+  const base = publicApiUrl.replace(/:3012\/?.*$/, '').replace(/\/?$/, '') + (publicApiUrl.includes('/api') ? '' : '/api');
+  return base.replace(/\/$/, '') + '/uploads/' + filename;
+}
+
 /** Construye la URL pública para un archivo subido: siempre .../api/uploads/... (nunca :3012). */
 function buildUploadPublicUrl(req, filename) {
   let base = publicApiUrl;
@@ -932,10 +944,18 @@ app.get('/api/sorteos/home', async (req, res) => {
       LIMIT 6
     `).all();
 
+    const principalOut = principal
+      ? { ...principal, imagen_url: normalizeImagenUrl(principal.imagen_url) }
+      : null;
+    const mayoresOut = mayoresRealizados.map((r) => ({
+      ...r,
+      imagen_url: normalizeImagenUrl(r.imagen_url)
+    }));
+
     res.json(toJSONSafe({
-      principal: principal || null,
+      principal: principalOut,
       anticipadosActuales,
-      mayoresRealizados
+      mayoresRealizados: mayoresOut
     }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);
