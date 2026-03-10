@@ -1,13 +1,12 @@
 <section class="hero">
   <div class="hero-content">
 
-    <!-- Imagen Premio Mayor (oculta si no hay sorteo o si la imagen falla al cargar) -->
+    <!-- Imagen Premio Mayor (oculta si no hay sorteo) -->
     <img
-      *ngIf="principal && !heroImageHidden"
+      *ngIf="principal"
       [src]="heroImageUrl"
       alt="Premio Mayor"
       class="hero-image"
-      (error)="onHeroImageError()"
     >
 
     <!-- Texto + Contador + Progreso -->

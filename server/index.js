@@ -146,14 +146,14 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Servir uploads como recurso público (puente Dominio A = Angular, Dominio B = API).
-// CORS permite que el navegador cargue las imágenes desde otro origen sin bloquear.
+// Servir uploads; permitir origen cruzado para que las imágenes carguen cuando el front está en otro dominio
 const uploadsCors = (req, res, next) => {
   res.set('Access-Control-Allow-Origin', corsOrigin === true ? '*' : corsOrigin);
   next();
 };
 const uploadsStatic = express.static(path.join(__dirname, 'public', 'uploads'));
 app.use('/uploads', uploadsCors, uploadsStatic);
+// También bajo /api/uploads para que las URLs guardadas como .../api/uploads/xxx.jpg respondan (proxy o acceso directo)
 app.use('/api/uploads', uploadsCors, uploadsStatic);
 
 const storage = multer.diskStorage({
@@ -241,30 +241,6 @@ app.use('/api/admin', adminAuthMiddleware);
 // Si el front está en otro dominio (ej. GitHub Pages), pon aquí la URL del API. Ej: https://tu-api.onrender.com o https://tudominio.com/api
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
-/** En la BD guardamos solo el nombre del archivo (ej. uuid.jpg), nunca rutas locales ni URLs completas. */
-function toStoredImageUrl(val) {
-  if (val == null || typeof val !== 'string') return null;
-  const t = String(val).trim();
-  if (!t) return null;
-  if (t.startsWith('http://') || t.startsWith('https://')) {
-    const m = t.match(/\/([^/?#]+)$/);
-    return m ? m[1] : t;
-  }
-  const m = t.match(/\/([^/]+)$/) || t.match(/^([^/]+)$/);
-  return m ? m[1] : t;
-}
-
-/** Para respuestas API: si tenemos PUBLIC_API_URL, devolvemos URL pública de la imagen; si no, el valor guardado (filename o path). */
-function toPublicImageUrl(imagenUrl) {
-  if (imagenUrl == null || typeof imagenUrl !== 'string') return imagenUrl;
-  const t = String(imagenUrl).trim();
-  if (!t) return null;
-  if (t.startsWith('http://') || t.startsWith('https://')) return t;
-  const filename = t.replace(/^\/uploads\/?/, '').trim() || t;
-  if (publicApiUrl) return publicApiUrl.replace(/\/$/, '') + '/uploads/' + filename;
-  return t;
-}
-
 function buildUploadPublicUrl(req, filename) {
   let base = publicApiUrl;
   if (!base) {
@@ -290,8 +266,9 @@ app.post('/api/admin/upload-image', (req, res, next) => {
 }, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    // Guardar solo el nombre del archivo; la URL completa se arma en el front o con PUBLIC_API_URL
-    res.json({ url: req.file.filename });
+    // Guardar solo la ruta relativa; la URL completa se arma en el front con la base del servidor
+    const path = '/uploads/' + req.file.filename;
+    res.json({ url: path });
   } catch (err) {
     console.error('Error upload imagen:', err);
     res.status(500).json({ error: err.message || 'Error al subir imagen' });
@@ -902,8 +879,7 @@ app.get('/api/sorteos', async (req, res) => {
       params.push(estado);
     }
     const rows = await db.prepare(sql).all(...params);
-    const forClient = (rows || []).map((r) => ({ ...r, imagen_url: toPublicImageUrl(r.imagen_url) }));
-    res.json(toJSONSafe({ sorteos: forClient }));
+    res.json(toJSONSafe({ sorteos: rows }));
   } catch (err) {
     console.error('Error GET /api/sorteos:', err);
     res.status(500).json({ error: err.message });
@@ -961,18 +937,10 @@ app.get('/api/sorteos/home', async (req, res) => {
       LIMIT 6
     `).all();
 
-    const principalForClient = principal
-      ? { ...principal, imagen_url: toPublicImageUrl(principal.imagen_url) }
-      : null;
-    const mayoresForClient = (mayoresRealizados || []).map((r) => ({
-      ...r,
-      imagen_url: toPublicImageUrl(r.imagen_url)
-    }));
-
     res.json(toJSONSafe({
-      principal: principalForClient,
+      principal: principal || null,
       anticipadosActuales,
-      mayoresRealizados: mayoresForClient
+      mayoresRealizados
     }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);
@@ -984,8 +952,7 @@ app.get('/api/sorteos/:id', async (req, res) => {
   try {
     const row = await db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Sorteo no encontrado' });
-    const forClient = { ...row, imagen_url: toPublicImageUrl(row.imagen_url) };
-    res.json(toJSONSafe(forClient));
+    res.json(toJSONSafe(row));
   } catch (err) {
     console.error('Error GET /api/sorteos/:id:', err);
     res.status(500).json({ error: err.message });
@@ -1127,7 +1094,7 @@ app.post('/api/admin/sorteos', async (req, res) => {
         descripcion || '',
         tipo,
         premio_descripcion || null,
-        (tipo === 'mayor' ? toStoredImageUrl(imagen_url) : null) || null,
+        (tipo === 'mayor' ? String(imagen_url).trim() : null) || null,
         (tipo !== 'mayor' && numeros_beneficiados) ? String(numeros_beneficiados).trim() || null : null
       );
       const mayorId = result.lastInsertRowid;
@@ -1184,7 +1151,7 @@ app.patch('/api/admin/sorteos/:id', async (req, res) => {
     if (tipo !== undefined) { updates.push('tipo = ?'); params.push(tipo); }
     if (estado !== undefined) { updates.push('estado = ?'); params.push(estado); }
     if (premio_descripcion !== undefined) { updates.push('premio_descripcion = ?'); params.push(premio_descripcion); }
-    if (imagen_url !== undefined) { updates.push('imagen_url = ?'); params.push(toStoredImageUrl(imagen_url)); }
+    if (imagen_url !== undefined) { updates.push('imagen_url = ?'); params.push(imagen_url); }
     if (numeros_beneficiados !== undefined) { updates.push('numeros_beneficiados = ?'); params.push((numeros_beneficiados || '').trim() || null); }
     if (updates.length === 0) return res.json(toJSONSafe(current));
 
