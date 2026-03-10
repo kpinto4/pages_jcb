@@ -229,8 +229,23 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
-// URL pública del backend (para URLs de imágenes al subir). Usar ruta /api sin puerto, ej. https://inversionesjcb.online/api o https://n1.voriamtechnologies.com/api
+// URL base pública del API (para URLs de imágenes al subir). Debe ser con /api y sin :3012, ej. https://inversionesjcb.online/api
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
+
+/** Construye la URL pública para un archivo subido: siempre .../api/uploads/... (nunca :3012). */
+function buildUploadPublicUrl(req, filename) {
+  let base = publicApiUrl;
+  if (base && base.includes(':3012')) {
+    base = base.replace(/:3012\/?.*$/, '') + '/api';
+  }
+  if (!base) {
+    let host = req.get('x-forwarded-host') || req.get('host') || '';
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+    if (!host.includes('localhost')) host = host.replace(/:3012$/, '');
+    base = protocol + '://' + host + '/api';
+  }
+  return base.replace(/\/$/, '') + '/uploads/' + filename;
+}
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
 app.post('/api/admin/upload-image', (req, res, next) => {
@@ -247,8 +262,7 @@ app.post('/api/admin/upload-image', (req, res, next) => {
 }, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
-    const url = baseUrl + '/uploads/' + req.file.filename;
+    const url = buildUploadPublicUrl(req, req.file.filename);
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);

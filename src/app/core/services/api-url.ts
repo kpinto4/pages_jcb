@@ -37,9 +37,14 @@ export function resolveImageUrl(url: string | null | undefined): string {
     const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
     return base + path;
   }
-  const match = u.match(/^https?:\/\/[^/]+:3012(\/uploads\/[^/?#]+)$/i);
-  if (match && typeof window !== 'undefined') {
-    return window.location.origin + '/api' + match[1];
+  const match3012 = u.match(/^https?:\/\/[^/]+:3012(\/uploads\/[^/?#]+)$/i);
+  if (match3012 && typeof window !== 'undefined') {
+    return window.location.origin + '/api' + match3012[1];
+  }
+  const ourHosts = /^https?:\/\/(n1\.voriamtechnologies\.com|inversionesjcb\.online)(?::\d+)?\/uploads\/([^/?#]+)$/i;
+  const matchOur = u.match(ourHosts);
+  if (matchOur && typeof window !== 'undefined') {
+    return window.location.origin + '/api/uploads/' + matchOur[2];
   }
   return u;
 }
