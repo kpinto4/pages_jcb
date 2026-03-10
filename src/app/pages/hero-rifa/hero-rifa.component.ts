@@ -56,9 +56,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
       if (!data) return;
       this.principal = data.principal ?? null;
       if (!this.principal) return;
-      if (this.principal.imagen_base64) {
-        this.heroImageUrl = this.principal.imagen_base64;
-      } else if (this.principal.imagen_url) {
+      if (this.principal.imagen_url) {
         this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
       }
       this.startCountdownFromDate(this.principal.fecha);

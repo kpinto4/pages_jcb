@@ -2,49 +2,29 @@ import { environment } from '../../../environments/environment';
 
 const BACKEND_PORT = 3012;
 
-/**
- * URL base del backend API.
- * - En el servidor: el backend está en la ruta /api (ej. n1.voriamtechnologies.com/api, inversionesjcb.online/api).
- *   Sin puerto :3012; Nginx/proxy redirige /api al backend.
- * - En desarrollo local: usa el puerto 3012 (environment.paymentApiUrl).
- */
+/** URL base del backend. En local: localhost:3012; en producción: mismo origen en /api (sin puerto). */
 export function getApiUrl(): string {
   if (typeof window === 'undefined') {
     return environment.paymentApiUrl || '';
   }
   const host = window.location.hostname;
-  const isLocal = host === 'localhost' || host === '127.0.0.1';
-  if (isLocal) {
+  if (host === 'localhost' || host === '127.0.0.1') {
     return environment.paymentApiUrl || `http://${host}:${BACKEND_PORT}`;
   }
   return window.location.origin + '/api';
 }
 
-/**
- * Convierte rutas /uploads/ o relativas a la URL del backend.
- * En servidor queda en /api/uploads/... (mismo origen, sin Mixed Content).
- * Si la URL guardada en BD tiene :3012 (ruta antigua), se reescribe a /api.
- */
+/** Convierte la URL de imagen a la base actual del API (/api/uploads/...). Si en BD hay URL antigua con :3012, la reescribe. */
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || !url.trim()) return '';
   const u = url.trim();
   const base = getApiUrl();
   if (!base) return u;
-  if (u.startsWith('/uploads') || u.startsWith('/')) {
-    return base + (u.startsWith('/') ? u : '/' + u);
+  if (u.startsWith('/uploads') || (u.startsWith('/') && !u.startsWith('//'))) {
+    return base.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
   }
-  if (/localhost|127\.0\.0\.1/i.test(u)) {
-    const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
-    return base + path;
-  }
-  // Reescribir URLs antiguas con dominio n1.voriamtechnologies.com o inversionesjcb.online,
-  // con o sin :3012 y con o sin /api antes de /uploads.
-  if (typeof window !== 'undefined') {
-    const legacy = u.match(/^https?:\/\/(n1\.voriamtechnologies\.com|inversionesjcb\.online)(?::\d+)?(\/api)?\/uploads\/([^/?#]+)$/i);
-    if (legacy) {
-      const filename = legacy[3];
-      return window.location.origin + '/api/uploads/' + filename;
-    }
-  }
+  // URL antigua con :3012 o otro dominio → usar /api/uploads/<filename>
+  const match = u.match(/\/uploads\/([^/?#]+)$/i);
+  if (match) return base.replace(/\/$/, '') + '/uploads/' + match[1];
   return u;
 }

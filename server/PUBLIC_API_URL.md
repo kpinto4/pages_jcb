@@ -1,58 +1,32 @@
-# PUBLIC_API_URL (servidor)
+# API en /api (sin puerto 3012 en las URLs)
 
-El backend está en la ruta **/api**. Las URLs de las imágenes al **subir** se guardan siempre con `/api/uploads/...` (nunca con `:3012`).
+El backend se expone en la ruta **/api**. Las imágenes están en **server/public/uploads/** y se sirven como **/api/uploads/...**.
 
-- Si en el **.env** tienes `PUBLIC_API_URL=https://inversionesjcb.online/api`, las nuevas subidas quedarán con esa base.
-- Si aún tienes `PUBLIC_API_URL=http://n1.voriamtechnologies.com:3012`, el backend **convierte** esa base a `http://n1.voriamtechnologies.com/api` al generar la URL de cada imagen subida, así que también se guarda en formato correcto.
-
-Recomendado en producción (mismo protocolo que la web):
+## Backend (.env)
 
 ```env
+# URL pública del API (sin :3012). Ejemplo: https://inversionesjcb.online/api
 PUBLIC_API_URL=https://inversionesjcb.online/api
 ```
 
-o, si la web se abre por n1:
+Al subir una imagen, el backend devuelve (y se guarda en BD) esa base + `/uploads/nombre.jpg`.
 
-```env
-PUBLIC_API_URL=https://n1.voriamtechnologies.com/api
-```
+## Front (producción)
 
----
+En producción el front usa **window.location.origin + '/api'**: mismas peticiones y mismas imágenes desde el mismo origen (sin Mixed Content).
 
-## Límite de tamaño al subir imágenes (413 / CORS)
+## Nginx / proxy
 
-Si al subir una imagen en el admin sale **413 Payload Too Large** o un error de **CORS**, suele ser porque **Nginx** (o el proxy) corta la petición antes de llegar al Node y no envía cabeceras CORS.
-
-**Qué debe hacer quien configure el servidor:** en el bloque de Nginx que hace proxy a `/api`, añadir:
+El proxy debe enviar `/api` (y por tanto `/api/uploads/...`) al backend Node (p. ej. `http://127.0.0.1:3012`). En el `location` de `/api`:
 
 ```nginx
 client_max_body_size 10M;
+proxy_pass http://127.0.0.1:3012;
+# ... proxy_set_header, etc.
 ```
 
-Por ejemplo, dentro del `location /api/`:
+Luego: `sudo nginx -t && sudo systemctl reload nginx`.
 
-```nginx
-location /api/ {
-    client_max_body_size 10M;
-    proxy_pass http://127.0.0.1:3012;
-    # ... resto de proxy_set_header, etc.
-}
-```
+## URLs antiguas en BD con :3012
 
-Luego recargar Nginx: `sudo nginx -t && sudo systemctl reload nginx`.
-
-El backend Node acepta imágenes de hasta **5 MB**; con `10M` en Nginx hay margen. Si la imagen es muy pesada, el usuario puede usar una URL externa (Imgur, etc.) en el campo "URI de la imagen".
-
----
-
-## URLs antiguas en la base de datos (Mixed Content)
-
-Si en la tabla `sorteos` la columna `imagen_url` tiene valores como `http://n1.voriamtechnologies.com:3012/uploads/xxx.jpg`, el navegador puede bloquearlas (Mixed Content) o mostrar advertencias. El front reescribe esas URLs a `https://<dominio-actual>/api/uploads/xxx.jpg`, pero para no depender de eso y tener la BD consistente puedes actualizarlas en Neon con:
-
-```sql
-UPDATE sorteos
-SET imagen_url = 'https://inversionesjcb.online/api/uploads/' || (regexp_match(imagen_url, '/uploads/([^/?#]+)'))[1]
-WHERE imagen_url ~ '^https?://[^/]+:3012/uploads/';
-```
-
-(Usa `inversionesjcb.online` o `n1.voriamtechnologies.com` según el dominio que use la web.) A partir de ahí, que `PUBLIC_API_URL` en el servidor sea `https://inversionesjcb.online/api` para que las nuevas subidas guarden ya la URL correcta.
+Si en la BD hay `imagen_url` con `http://...:3012/uploads/xxx.jpg`, el front las reescribe a `origin + '/api/uploads/xxx.jpg'` al mostrarlas. Opcional: actualizar en Neon para que queden con la base nueva.
