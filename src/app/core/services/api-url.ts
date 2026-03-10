@@ -2,46 +2,53 @@ import { environment } from '../../../environments/environment';
 
 const BACKEND_PORT = 3012;
 
-/** URL base del backend. En local: localhost:3012; en producción: mismo origen en /api o paymentApiUrl si front y API están en dominios distintos. */
+/**
+ * URL base del backend API. Nunca devuelve vacío en el navegador para evitar que las peticiones vayan al mismo origen (front).
+ * Puertos: Frontend 3015 | Backend 3012.
+ */
 export function getApiUrl(): string {
-  if (typeof window === 'undefined') {
-    return environment.paymentApiUrl || '';
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+
+    // Si NO es local (es decir, es tu dominio real), NO agregues el puerto.
+    if (!isLocal) {
+      return `https://n1.voriamtechnologies.com`;
+    }
+
+    // Para desarrollo local, seguimos usando el puerto 3012.
+    return environment.paymentApiUrl || `${protocol}//${host}:${BACKEND_PORT}`;
   }
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return environment.paymentApiUrl || `http://${host}:${BACKEND_PORT}`;
-  }
-  // Si el front se sirve desde otro dominio (ej. GitHub Pages), usar la URL del API para peticiones e imágenes
-  if (environment.paymentApiUrl) {
-    return environment.paymentApiUrl.replace(/\/$/, '');
-  }
-  return window.location.origin + '/api';
+  return environment.paymentApiUrl || '';
 }
 
 /**
- * Convierte la referencia de imagen a URL absoluta del servidor.
- * Usada en el hero (home) y en la sección de premios: la misma imagen del sorteo se muestra en ambos.
- * - Ruta del servidor (/uploads/xxx o uploads/xxx) → se une a la base del API.
- * - Solo nombre de archivo (xxx.jpg) → se trata como subida: base + /uploads/xxx.
- * - URL externa (http...) o antigua con otro dominio → se reescribe a base + /uploads/filename si contiene /uploads/, sino se deja igual.
+ * Convierte URLs de imágenes con localhost o rutas /uploads/ a la URL del API actual (para despliegue).
+ * Cualquier URL que contenga localhost o 127.0.0.1 se reescribe al host del API configurado.
  */
+/*
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || !url.trim()) return '';
   const u = url.trim();
   const base = getApiUrl();
-  if (!base) return u;
-  // Ruta relativa del servidor: /uploads/xxx o uploads/xxx
-  if (u.startsWith('/uploads') || u.startsWith('uploads/')) {
-    const path = u.startsWith('/') ? u : '/' + u;
-    return base.replace(/\/$/, '') + path;
+  if (u.startsWith('/uploads') || u.startsWith('/')) return base ? base + (u.startsWith('/') ? u : '/' + u) : u;
+  if (/localhost|127\.0\.0\.1/i.test(u)) {
+    const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
+    return base ? base + path : u;
   }
-  // Solo nombre de archivo (sin barras) = subida en servidor
-  if (!u.includes('/') && !u.startsWith('http')) {
-    return base.replace(/\/$/, '') + '/uploads/' + u;
-  }
-  // URL antigua con dominio (ej. https://otro.com/api/uploads/xxx) → reescribir a nuestro servidor
-  const match = u.match(/\/uploads\/([^/?#]+)$/i);
-  if (match) return base.replace(/\/$/, '') + '/uploads/' + match[1];
-  // URL externa (Imgur, etc.) → devolver tal cual
   return u;
 }
+*/
+
+export function resolveImageUrl(url: string | null | undefined): string {
+  if (!url || !url.trim()) return '';
+
+  let u = url.trim();
+
+  // quitar /api si viene desde el backend
+  u = u.replace('/api/uploads', '/uploads');
+
+  return u;
+}
+
