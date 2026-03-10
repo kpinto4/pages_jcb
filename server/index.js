@@ -266,8 +266,9 @@ app.post('/api/admin/upload-image', (req, res, next) => {
 }, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const url = buildUploadPublicUrl(req, req.file.filename);
-    res.json({ url });
+    // Guardar solo la ruta relativa; la URL completa se arma en el front con la base del servidor
+    const path = '/uploads/' + req.file.filename;
+    res.json({ url: path });
   } catch (err) {
     console.error('Error upload imagen:', err);
     res.status(500).json({ error: err.message || 'Error al subir imagen' });

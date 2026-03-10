@@ -131,12 +131,12 @@
       </div>
       <div class="form-row">
         <label>Imagen del premio (para el hero)</label>
-        <p class="muted small">Recomendado: pega la <strong>URL de la imagen</strong> (Imgur, Supabase Storage, etc.). La subida de archivo en producción puede fallar.</p>
+        <p class="muted small">Sube una imagen (se guarda en el servidor) o pega una <strong>URL externa</strong> (Imgur, etc.).</p>
         <div class="imagen-opciones">
-          <input type="url" placeholder="URL de la imagen" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
-          <span>o</span>
           <input type="file" accept="image/*" (change)="onImagenFileChange($event)">
           <span *ngIf="imagenFile" class="file-name">{{ imagenFile.name }}</span>
+          <span>o</span>
+          <input type="url" placeholder="URL externa (opcional)" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
         </div>
       </div>
       <div class="form-row">
@@ -175,7 +175,10 @@
             <input type="text" placeholder="Número bendecido (ej: 1234 o 1234-5678)" [(ngModel)]="editForm.numeros_beneficiados">
           </div>
           <div class="form-row" *ngIf="s.tipo === 'mayor'">
-            <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
+            <label>Imagen: subir o ruta/URL</label>
+            <input type="file" accept="image/*" (change)="onEditImagenFileChange($event)">
+            <span *ngIf="editImagenFile" class="file-name">{{ editImagenFile.name }}</span>
+            <input type="text" placeholder="/uploads/... o URL externa" [(ngModel)]="editForm.imagen_url" class="edit-imagen-url">
           </div>
           <div class="edit-actions">
             <button type="button" class="btn-primary" [disabled]="guardandoEditId === s.id" (click)="guardarEdicionSorteo()">

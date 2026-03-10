@@ -18,17 +18,30 @@ export function getApiUrl(): string {
   return window.location.origin + '/api';
 }
 
-/** Convierte la URL de imagen a la base actual del API (/api/uploads/...). Si en BD hay URL antigua con :3012, la reescribe. */
+/**
+ * Convierte la referencia de imagen a URL absoluta del servidor.
+ * Usada en el hero (home) y en la sección de premios: la misma imagen del sorteo se muestra en ambos.
+ * - Ruta del servidor (/uploads/xxx o uploads/xxx) → se une a la base del API.
+ * - Solo nombre de archivo (xxx.jpg) → se trata como subida: base + /uploads/xxx.
+ * - URL externa (http...) o antigua con otro dominio → se reescribe a base + /uploads/filename si contiene /uploads/, sino se deja igual.
+ */
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || !url.trim()) return '';
   const u = url.trim();
   const base = getApiUrl();
   if (!base) return u;
-  if (u.startsWith('/uploads') || (u.startsWith('/') && !u.startsWith('//'))) {
-    return base.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
+  // Ruta relativa del servidor: /uploads/xxx o uploads/xxx
+  if (u.startsWith('/uploads') || u.startsWith('uploads/')) {
+    const path = u.startsWith('/') ? u : '/' + u;
+    return base.replace(/\/$/, '') + path;
   }
-  // URL antigua con :3012 o otro dominio → usar /api/uploads/<filename>
+  // Solo nombre de archivo (sin barras) = subida en servidor
+  if (!u.includes('/') && !u.startsWith('http')) {
+    return base.replace(/\/$/, '') + '/uploads/' + u;
+  }
+  // URL antigua con dominio (ej. https://otro.com/api/uploads/xxx) → reescribir a nuestro servidor
   const match = u.match(/\/uploads\/([^/?#]+)$/i);
   if (match) return base.replace(/\/$/, '') + '/uploads/' + match[1];
+  // URL externa (Imgur, etc.) → devolver tal cual
   return u;
 }
