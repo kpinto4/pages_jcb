@@ -37,14 +37,14 @@ export function resolveImageUrl(url: string | null | undefined): string {
     const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
     return base + path;
   }
-  const match3012 = u.match(/^https?:\/\/[^/]+:3012(\/uploads\/[^/?#]+)$/i);
-  if (match3012 && typeof window !== 'undefined') {
-    return window.location.origin + '/api' + match3012[1];
-  }
-  const ourHosts = /^https?:\/\/(n1\.voriamtechnologies\.com|inversionesjcb\.online)(?::\d+)?\/uploads\/([^/?#]+)$/i;
-  const matchOur = u.match(ourHosts);
-  if (matchOur && typeof window !== 'undefined') {
-    return window.location.origin + '/api/uploads/' + matchOur[2];
+  // Reescribir URLs antiguas con dominio n1.voriamtechnologies.com o inversionesjcb.online,
+  // con o sin :3012 y con o sin /api antes de /uploads.
+  if (typeof window !== 'undefined') {
+    const legacy = u.match(/^https?:\/\/(n1\.voriamtechnologies\.com|inversionesjcb\.online)(?::\d+)?(\/api)?\/uploads\/([^/?#]+)$/i);
+    if (legacy) {
+      const filename = legacy[3];
+      return window.location.origin + '/api/uploads/' + filename;
+    }
   }
   return u;
 }
