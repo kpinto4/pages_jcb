@@ -365,8 +365,12 @@ export class AdminComponent implements OnInit, OnDestroy {
             this.guardandoSorteo = false;
           }
         },
-        error: () => {
-          this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
+        error: (err) => {
+          if (err?.status === 413) {
+            this.error = 'Imagen demasiado grande o el servidor tiene límite de subida. Usa una imagen más pequeña (< 5 MB) o pega la URL (Imgur, etc.).';
+          } else {
+            this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
+          }
           this.guardandoSorteo = false;
         }
       });
@@ -457,7 +461,9 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         if (err?.status === 401) this.on401();
         this.guardandoEditId = null;
-        this.error = 'Error al subir la imagen. Intenta de nuevo.';
+        this.error = err?.status === 413
+          ? 'Imagen demasiado grande. Usa una más pequeña o pega una URL (Imgur, etc.).'
+          : (err?.error?.error || 'Error al subir la imagen. Intenta de nuevo.');
       }
     });
   }

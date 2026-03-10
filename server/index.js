@@ -233,7 +233,18 @@ app.use('/api/admin', adminAuthMiddleware);
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
+app.post('/api/admin/upload-image', (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'Imagen demasiado grande. Máximo 5 MB. Usa una imagen más pequeña o pega una URL (Imgur, etc.).' });
+      }
+      console.error('Error upload imagen:', err);
+      return res.status(500).json({ error: err.message || 'Error al subir imagen' });
+    }
+    next();
+  });
+}, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
     const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
