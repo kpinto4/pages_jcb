@@ -147,10 +147,14 @@ app.use((req, res, next) => {
   next();
 });
 // Servir uploads; permitir origen cruzado para que las imágenes carguen cuando el front está en otro dominio
-app.use('/uploads', (req, res, next) => {
+const uploadsCors = (req, res, next) => {
   res.set('Access-Control-Allow-Origin', corsOrigin === true ? '*' : corsOrigin);
   next();
-}, express.static(path.join(__dirname, 'public', 'uploads')));
+};
+const uploadsStatic = express.static(path.join(__dirname, 'public', 'uploads'));
+app.use('/uploads', uploadsCors, uploadsStatic);
+// También bajo /api/uploads para que las URLs guardadas como .../api/uploads/xxx.jpg respondan (proxy o acceso directo)
+app.use('/api/uploads', uploadsCors, uploadsStatic);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
