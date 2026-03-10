@@ -1,15 +1,23 @@
 # API en /api (sin puerto 3012 en las URLs)
 
-El backend se expone en la ruta **/api**. Las imágenes están en **server/public/uploads/** y se sirven como **/api/uploads/...**.
+El backend expone la carpeta de imágenes como **pública** en **/uploads** y **/api/uploads**, con CORS para que el front (Dominio A) pueda cargar imágenes del servidor (Dominio B).
+
+- **En la BD** se guarda solo el **nombre del archivo** (ej. `84e8aab8-79f6-43a8-aaf8-d0359c47d20f.jpg`), nunca rutas locales ni URLs completas.
+- **En las respuestas API** (home, sorteos, etc.) el backend devuelve la **URL pública** de la imagen si está definido `PUBLIC_API_URL`; así Angular recibe directamente `https://tu-dominio-api.com/uploads/nombre.jpg`.
 
 ## Backend (.env)
 
 ```env
-# URL pública del API (sin :3012). Ejemplo: https://inversionesjcb.online/api
-PUBLIC_API_URL=https://inversionesjcb.online/api
+# URL pública del API (sin :3012). Ejemplo: https://inversionesicb.online/api
+# Si está definida, las respuestas incluirán esta base para imagen_url (evita que el front tenga que adivinar el dominio).
+PUBLIC_API_URL=https://inversionesicb.online/api
+
+# Orígenes permitidos para CORS (dominio del front). Ej: https://inversionesicb.online
+# Si no se define, se acepta cualquier origen (solo recomendable en desarrollo).
+ALLOWED_ORIGIN=https://inversionesicb.online
 ```
 
-Al subir una imagen, el backend devuelve (y se guarda en BD) esa base + `/uploads/nombre.jpg`.
+Al subir una imagen, el backend devuelve solo el **nombre del archivo**; el admin lo guarda en el sorteo y, al consultar home/sorteos, la API responde con la URL completa usando `PUBLIC_API_URL`.
 
 ## Front (producción)
 

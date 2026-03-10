@@ -27,6 +27,12 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
+  /** Placeholder cuando la imagen del API falla (404 o red). */
+  private readonly fallbackImage = 'assets/img/premio-mayor.jpg';
+  /** Si la imagen del servidor falló y ya usamos el placeholder, no volver a intentar. */
+  private heroImageUseFallback = false;
+  /** Ocultar imagen solo si el placeholder también falló (evita recurso roto). */
+  heroImageHidden = false;
 
   private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly destroy$ = new Subject<void>();
@@ -56,11 +62,28 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
       if (!data) return;
       this.principal = data.principal ?? null;
       if (!this.principal) return;
+      this.heroImageUseFallback = false;
+      this.heroImageHidden = false;
       if (this.principal.imagen_url) {
-        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.fallbackImage;
+      } else {
+        this.heroImageUrl = this.fallbackImage;
       }
       this.startCountdownFromDate(this.principal.fecha);
     });
+  }
+
+  /**
+   * Si la imagen del premio mayor falla (404, CORS, red), usar placeholder local.
+   * Si el placeholder también falla, ocultar la imagen para no mostrar recurso roto.
+   */
+  onHeroImageError(): void {
+    if (!this.heroImageUseFallback) {
+      this.heroImageUseFallback = true;
+      this.heroImageUrl = this.fallbackImage;
+    } else {
+      this.heroImageHidden = true;
+    }
   }
 
   private loadProgreso(): void {
