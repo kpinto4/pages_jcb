@@ -19,15 +19,19 @@ export class PremiosComponent {
   })[] = [];
   @Input() loading = false;
 
-  /** Id del sorteo actualmente expandido (solo una carta abierta a la vez). */
-  expandedId: number | null = null;
+  /** Sorteos expandidos (solo imagen visible por defecto, clic despliega info). */
+  expandedIds = new Set<number>();
 
   toggleExpand(s: Sorteo): void {
-    this.expandedId = this.expandedId === s.id ? null : s.id;
+    if (this.expandedIds.has(s.id)) {
+      this.expandedIds.delete(s.id);
+    } else {
+      this.expandedIds.add(s.id);
+    }
   }
 
   isExpanded(s: Sorteo): boolean {
-    return this.expandedId === s.id;
+    return this.expandedIds.has(s.id);
   }
 
   onCardKeydown(e: KeyboardEvent, s: Sorteo): void {
