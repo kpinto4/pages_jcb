@@ -132,35 +132,9 @@ const isPg = !!process.env.DATABASE_URL;
 const dateCmpEq = isPg ? '(fecha::date) = (?::date)' : 'date(fecha) = date(?)';
 const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
-// CORS: en producción define ALLOWED_ORIGIN (uno o varios separados por coma, sin barra final).
-// Ej: ALLOWED_ORIGIN=https://tudominio.com o https://app.com,https://www.app.com
-// Vacío o sin definir = en desarrollo se refleja el Origin de la petición (cualquier origen).
-const allowedOriginRaw = (process.env.ALLOWED_ORIGIN || '').trim();
-const allowedOriginsList = allowedOriginRaw
-  ? allowedOriginRaw.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
-  : [];
-
-function getCorsOrigin(origin) {
-  if (allowedOriginsList.length === 0) {
-    return origin || true;
-  }
-  if (!origin) return true;
-  const normalized = origin.replace(/\/+$/, '');
-  return allowedOriginsList.includes(normalized) ? normalized : false;
-}
-
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowed = getCorsOrigin(origin);
-    if (allowed === false) {
-      return callback(null, false);
-    }
-    callback(null, allowed === true ? true : allowed);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
-}));
+// CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
+const corsOrigin = process.env.ALLOWED_ORIGIN || true;
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 // Si la DB no cargó, solo permitir health y admin/login
 app.use((req, res, next) => {
@@ -172,18 +146,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Servir uploads; mismo criterio CORS que el API (origen reflejado o permitido en la lista)
-const uploadsCors = (req, res, next) => {
-  const origin = req.get('Origin');
-  const allowed = getCorsOrigin(origin);
-  if (allowed === true) res.set('Access-Control-Allow-Origin', origin || '*');
-  else if (allowed) res.set('Access-Control-Allow-Origin', allowed);
-  next();
-};
-const uploadsStatic = express.static(path.join(__dirname, 'public', 'uploads'));
-app.use('/uploads', uploadsCors, uploadsStatic);
-// También bajo /api/uploads para que las URLs guardadas como .../api/uploads/xxx.jpg respondan (proxy o acceso directo)
-app.use('/api/uploads', uploadsCors, uploadsStatic);
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -266,38 +229,16 @@ function adminAuthMiddleware(req, res, next) {
 
 app.use('/api/admin', adminAuthMiddleware);
 
-// URL pública del API donde se sirve este backend (para que la URL de la imagen guardada sea la correcta).
-// Si el front está en otro dominio (ej. GitHub Pages), pon aquí la URL del API. Ej: https://tu-api.onrender.com o https://tudominio.com/api
+// URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
 const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
 
-function buildUploadPublicUrl(req, filename) {
-  let base = publicApiUrl;
-  if (!base) {
-    const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
-    const host = (req.get('x-forwarded-host') || req.get('host') || '').replace(/:3012$/, '');
-    base = protocol + '://' + host + '/api';
-  }
-  return base.replace(/\/$/, '') + '/uploads/' + filename;
-}
-
 // ----- ADMIN: subir imagen (para premio mayor) -----
-app.post('/api/admin/upload-image', (req, res, next) => {
-  upload.single('image')(req, res, (err) => {
-    if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: 'Imagen demasiado grande. Máximo 5 MB.' });
-      }
-      console.error('Error upload imagen:', err);
-      return res.status(500).json({ error: err.message || 'Error al subir imagen' });
-    }
-    next();
-  });
-}, (req, res) => {
+app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    // Guardar solo la ruta relativa; la URL completa se arma en el front con la base del servidor
-    const path = '/uploads/' + req.file.filename;
-    res.json({ url: path });
+    const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
+    const url = baseUrl + '/uploads/' + req.file.filename;
+    res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);
     res.status(500).json({ error: err.message || 'Error al subir imagen' });
