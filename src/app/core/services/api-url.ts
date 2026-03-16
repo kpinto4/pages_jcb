@@ -11,13 +11,9 @@ export function getApiUrl(): string {
     const protocol = window.location.protocol;
     const host = window.location.hostname;
     const isLocal = host === 'localhost' || host === '127.0.0.1';
-
-    // Si NO es local (es decir, es tu dominio real), NO agregues el puerto.
     if (!isLocal) {
-      return `https://n1.voriamtechnologies.com`;
+      return `${protocol}//${host}:${BACKEND_PORT}`;
     }
-
-    // Para desarrollo local, seguimos usando el puerto 3012.
     return environment.paymentApiUrl || `${protocol}//${host}:${BACKEND_PORT}`;
   }
   return environment.paymentApiUrl || '';
@@ -27,7 +23,6 @@ export function getApiUrl(): string {
  * Convierte URLs de imágenes con localhost o rutas /uploads/ a la URL del API actual (para despliegue).
  * Cualquier URL que contenga localhost o 127.0.0.1 se reescribe al host del API configurado.
  */
-/*
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || !url.trim()) return '';
   const u = url.trim();
@@ -39,16 +34,5 @@ export function resolveImageUrl(url: string | null | undefined): string {
   }
   return u;
 }
-*/
 
-export function resolveImageUrl(url: string | null | undefined): string {
-  if (!url || !url.trim()) return '';
-
-  let u = url.trim();
-
-  // quitar /api si viene desde el backend
-  u = u.replace('/api/uploads', '/uploads');
-
-  return u;
-}
 
