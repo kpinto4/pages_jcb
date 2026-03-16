@@ -25,6 +25,7 @@
     flex-wrap: wrap;
     gap: 2rem;
     justify-content: center;
+    align-items: flex-start; /* Cada tarjeta mantiene su propia altura; no se estiran al expandir la vecina */
   }
 
   .card {
