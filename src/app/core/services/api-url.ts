@@ -34,4 +34,3 @@ export function resolveImageUrl(url: string | null | undefined): string {
   }
   return u;
 }
-
