@@ -43,8 +43,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   editSorteoId: number | null = null;
   editForm: { nombre: string; fecha: string; premio_descripcion: string; numeros_beneficiados: string; imagen_url: string } = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
   guardandoEditId: number | null = null;
-  /** Archivo de imagen seleccionado al editar un premio mayor */
-  editImagenFile: File | null = null;
   /** Archivos de foto seleccionados por sorteo terminado (key = sorteo id) */
   fotoGanadorFiles: { [id: number]: File } = {};
 
@@ -310,14 +308,6 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  onEditImagenFileChange(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files?.length) {
-      this.editImagenFile = input.files[0];
-      this.editForm.imagen_url = ''; // al guardar se usará la ruta devuelta por el servidor
-    }
-  }
-
   crearSorteo(): void {
     if (!this.nuevoSorteo.nombre.trim() || !this.nuevoSorteo.fecha.trim()) {
       this.error = 'Nombre y fecha son obligatorios.';
@@ -375,12 +365,8 @@ export class AdminComponent implements OnInit, OnDestroy {
             this.guardandoSorteo = false;
           }
         },
-        error: (err) => {
-          if (err?.status === 413) {
-            this.error = 'Imagen demasiado grande o el servidor tiene límite de subida. Usa una imagen más pequeña (< 5 MB) o pega la URL (Imgur, etc.).';
-          } else {
-            this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
-          }
+        error: () => {
+          this.error = 'Error al subir la imagen. Usa la URL de la imagen (sube la imagen a Imgur o similar y pega el enlace).';
           this.guardandoSorteo = false;
         }
       });
@@ -401,53 +387,32 @@ export class AdminComponent implements OnInit, OnDestroy {
   guardarEdicionSorteo(): void {
     if (this.editSorteoId == null) return;
     this.guardandoEditId = this.editSorteoId;
-    const buildBody = (imagenUrl?: string) => ({
+    const body = {
       nombre: this.editForm.nombre.trim(),
       fecha: this.editForm.fecha.trim(),
       premio_descripcion: this.editForm.premio_descripcion.trim() || undefined,
       numeros_beneficiados: this.editForm.numeros_beneficiados.trim() || undefined,
-      imagen_url: imagenUrl ?? (this.editForm.imagen_url.trim() || undefined)
-    });
-    const doUpdate = (body: { nombre: string; fecha: string; premio_descripcion?: string; numeros_beneficiados?: string; imagen_url?: string }) => {
-      this.adminService.updateSorteo(this.editSorteoId!, body).pipe(takeUntil(this.destroy$)).subscribe({
-        next: (updated) => {
-          if (updated) {
-            this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
-          }
-          this.cancelarEdicion();
-          this.guardandoEditId = null;
-        },
-        error: (err) => {
-          if (err?.status === 401) this.on401();
-          this.guardandoEditId = null;
-          this.error = err?.error?.error || err?.message || 'No se pudo guardar el sorteo.';
-        }
-      });
+      imagen_url: this.editForm.imagen_url.trim() || undefined
     };
-    if (this.editImagenFile) {
-      this.adminService.uploadImage(this.editImagenFile).pipe(takeUntil(this.destroy$)).subscribe({
-        next: (res) => {
-          if (res?.url) {
-            doUpdate(buildBody(res.url));
-          } else {
-            this.error = 'No se pudo subir la imagen.';
-            this.guardandoEditId = null;
-          }
-        },
-        error: (err) => {
-          this.guardandoEditId = null;
-          this.error = err?.status === 413 ? 'Imagen demasiado grande.' : (err?.error?.error || 'Error al subir la imagen.');
+    this.adminService.updateSorteo(this.editSorteoId, body).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (updated) => {
+        if (updated) {
+          this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
         }
-      });
-    } else {
-      doUpdate(buildBody());
-    }
+        this.cancelarEdicion();
+        this.guardandoEditId = null;
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+        this.guardandoEditId = null;
+        this.error = err?.error?.error || err?.message || 'No se pudo guardar el sorteo.';
+      }
+    });
   }
 
   cancelarEdicion(): void {
     this.editSorteoId = null;
     this.editForm = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
-    this.editImagenFile = null;
     this.fotoGanadorFiles = {};
   }
 
@@ -492,9 +457,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         if (err?.status === 401) this.on401();
         this.guardandoEditId = null;
-        this.error = err?.status === 413
-          ? 'Imagen demasiado grande. Usa una más pequeña o pega una URL (Imgur, etc.).'
-          : (err?.error?.error || 'Error al subir la imagen. Intenta de nuevo.');
+        this.error = 'Error al subir la imagen. Intenta de nuevo.';
       }
     });
   }

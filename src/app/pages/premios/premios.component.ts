@@ -42,18 +42,7 @@ export class PremiosComponent {
   }
 
   get sorteos(): (Sorteo & { ganador_nombre?: string; ganador_cedula?: string; ganador_email?: string; ganador_telefono?: string })[] {
-    if (!this.mayoresRealizados || this.mayoresRealizados.length === 0) {
-      return [];
-    }
-
-    // Ordena de más reciente a más antiguo y toma solo los últimos 3 premios
-    return [...this.mayoresRealizados]
-      .sort((a, b) => {
-        const da = a.fecha ? new Date(a.fecha).getTime() : 0;
-        const db = b.fecha ? new Date(b.fecha).getTime() : 0;
-        return db - da;
-      })
-      .slice(0, 3);
+    return this.mayoresRealizados || [];
   }
 
   /**

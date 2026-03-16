@@ -24,10 +24,9 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   soldStikers = 0;
   totalStikers = 0;
 
-  // Sorteo principal (premio mayor). Fallback si la URL del API falla (404/CORS).
+  // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
-  private heroImageFallback = 'assets/img/premio-mayor.jpg';
 
   private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly destroy$ = new Subject<void>();
@@ -57,17 +56,15 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
       if (!data) return;
       this.principal = data.principal ?? null;
       if (!this.principal) return;
+
       if (this.principal.imagen_url) {
-        const resolved = resolveImageUrl(this.principal.imagen_url);
-        this.heroImageUrl = resolved || this.heroImageUrl;
+        console.log("imagen original:", this.principal.imagen_url);
+        console.log("imagen resuelta:", resolveImageUrl(this.principal.imagen_url));
+        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+          console.log(this.principal.imagen_url);
       }
       this.startCountdownFromDate(this.principal.fecha);
     });
-  }
-
-  /** Si la imagen del premio mayor falla (404, CORS, etc.), usar la imagen por defecto. */
-  onHeroImageError(): void {
-    this.heroImageUrl = this.heroImageFallback;
   }
 
   private loadProgreso(): void {
