@@ -50,7 +50,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     /** Precio por stiker en unidades de la moneda (COP, USD, etc.), no en centavos */
     precioStikerUnidad: 5000,
     currency: 'cop',
-    anticipadoStepPercent: 20
+    anticipadosPercent: Array.from({ length: 10 }, () => 100)
   };
   guardandoConfig = false;
   configGuardada = false;
@@ -171,11 +171,14 @@ export class AdminComponent implements OnInit, OnDestroy {
           this.config.precioStikerUnidad = parseInt(c.precio_stiker_cents, 10) / 100;
         }
         if (c?.currency) this.config.currency = c.currency;
-        if (c?.anticipado_step_percent) {
-          const val = parseInt(c.anticipado_step_percent, 10);
-          if (!isNaN(val) && val > 0 && val <= 100) {
-            this.config.anticipadoStepPercent = val;
-          }
+        if (c?.anticipados_percent) {
+          const raw = c.anticipados_percent.split(',').map((p) => p.trim()).filter(Boolean);
+          const arr = raw.map((p) => {
+            const n = parseInt(p, 10);
+            return !isNaN(n) && n > 0 && n <= 100 ? n : 100;
+          });
+          while (arr.length < 10) arr.push(100);
+          this.config.anticipadosPercent = arr.slice(0, 10);
         }
       },
       error: (err) => {
@@ -190,7 +193,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.adminService.updateConfig({
       precioStikerCents: Math.round(this.config.precioStikerUnidad * 100),
       currency: this.config.currency,
-      anticipadoStepPercent: this.config.anticipadoStepPercent
+      anticipadosPercent: this.config.anticipadosPercent.join(',')
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.guardandoConfig = false;
