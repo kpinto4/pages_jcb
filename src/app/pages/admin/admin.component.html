@@ -321,7 +321,7 @@
   <!-- CONFIGURACIÓN -->
   <section *ngIf="tab === 'config'" class="panel">
     <h2>Configuración del negocio</h2>
-    <p class="muted">Precio por stiker y moneda que verán los clientes en Comprar Stikers.</p>
+    <p class="muted">Precio por stiker, moneda y reglas globales para anticipados.</p>
     <div class="config-form">
       <div class="form-row">
         <label>
@@ -347,6 +347,18 @@
           <option value="eur">EUR</option>
           <option value="mxn">MXN</option>
         </select>
+      </div>
+      <div class="form-row">
+        <label>
+          % de stikers vendidos por cada anticipado
+          <span class="muted small">(ej. 20 = se libera 1 anticipado por cada 20% vendido)</span>
+        </label>
+        <input
+          type="number"
+          min="1"
+          max="100"
+          step="1"
+          [(ngModel)]="config.anticipadoStepPercent">
       </div>
       <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
         {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}

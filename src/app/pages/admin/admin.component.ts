@@ -49,7 +49,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   config = {
     /** Precio por stiker en unidades de la moneda (COP, USD, etc.), no en centavos */
     precioStikerUnidad: 5000,
-    currency: 'cop'
+    currency: 'cop',
+    anticipadoStepPercent: 20
   };
   guardandoConfig = false;
   configGuardada = false;
@@ -167,6 +168,12 @@ export class AdminComponent implements OnInit, OnDestroy {
           this.config.precioStikerUnidad = parseInt(c.precio_stiker_cents, 10) / 100;
         }
         if (c?.currency) this.config.currency = c.currency;
+        if (c?.anticipado_step_percent) {
+          const val = parseInt(c.anticipado_step_percent, 10);
+          if (!isNaN(val) && val > 0 && val <= 100) {
+            this.config.anticipadoStepPercent = val;
+          }
+        }
       },
       error: (err) => {
         if (err?.status === 401) this.on401();
@@ -179,7 +186,8 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.configGuardada = false;
     this.adminService.updateConfig({
       precioStikerCents: Math.round(this.config.precioStikerUnidad * 100),
-      currency: this.config.currency
+      currency: this.config.currency,
+      anticipadoStepPercent: this.config.anticipadoStepPercent
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.guardandoConfig = false;
