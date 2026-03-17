@@ -123,6 +123,16 @@
   }
 }
 
+@media (min-width: 700px) {
+  .premios .cards {
+    justify-content: space-between;
+  }
+
+  .premios .card {
+    flex: 0 1 calc(33.333% - 1.5rem);
+  }
+}
+
 @media (max-width: 700px) {
   .premios .cards {
     flex-direction: column;
