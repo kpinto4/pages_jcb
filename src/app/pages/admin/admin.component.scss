@@ -633,11 +633,113 @@
   }
 }
 
+.config-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
+  gap: 2rem;
+  margin-top: 1.5rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 900px) {
+  .config-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.config-form {
+  min-width: 0;
+  padding: 1.5rem 1.75rem;
+  background: var(--background);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+
+  .form-row {
+    margin-bottom: 1rem;
+
+    label {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 0.35rem;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 0.65rem 0.8rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+  }
+
+  .btn-primary {
+    margin-top: 0.25rem;
+  }
+
+  .config-ok {
+    margin-left: 0.75rem;
+    color: var(--accent);
+    font-size: 0.9rem;
+  }
+}
+
+.anticipados-card {
+  margin-top: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--text);
+  }
+
+  .anticipados-table {
+    min-width: 0;
+
+    th,
+    td {
+      font-size: 0.85rem;
+    }
+
+    .anticipado-label {
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    input {
+      max-width: 120px;
+      text-align: center;
+      margin: 0 auto;
+      display: block;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .anticipados-card .anticipados-table {
+    th:nth-child(1),
+    td:nth-child(1) {
+      text-align: left;
+      width: 40%;
+    }
+  }
+}
+
 .reset-stikers-box {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
-  max-width: 420px;
+  margin-top: 0;
+  padding: 1.5rem 1.75rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: var(--shadow);
   min-width: 0;
 
   h4 {
@@ -651,43 +753,6 @@
   }
   button {
     max-width: 100%;
-  }
-}
-
-.config-form {
-  max-width: 640px;
-  margin-top: 1rem;
-  min-width: 0;
-
-  .form-row {
-    margin-bottom: 0.75rem;
-
-    label {
-      display: block;
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      margin-bottom: 0.35rem;
-    }
-
-    input,
-    select {
-      width: 100%;
-      padding: 0.6rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--background);
-      color: var(--text);
-    }
-  }
-
-  .btn-primary {
-    margin-top: 0.5rem;
-  }
-
-  .config-ok {
-    margin-left: 1rem;
-    color: var(--accent);
-    font-size: 0.9rem;
   }
 }
 

@@ -329,8 +329,9 @@
   <section *ngIf="tab === 'config'" class="panel">
     <h2>Configuración del negocio</h2>
     <p class="muted">Precio por stiker, moneda y reglas globales para anticipados.</p>
-    <div class="config-form">
-      <div class="form-row">
+    <div class="config-panel">
+      <div class="config-form">
+        <div class="form-row">
         <label>
           Precio por stiker
           <span class="muted small">(en {{ config.currency.toUpperCase() }}, ej. {{ config.currency === 'cop' ? '5000' : config.currency === 'usd' ? '5' : '5' }})</span>
@@ -346,7 +347,7 @@
           {{ config.currency === 'cop' ? 'Ej: 5000 = $5.000 COP por stiker.' : 'Ej: 5 = $5.00 USD por stiker.' }}
         </small>
       </div>
-      <div class="form-row">
+        <div class="form-row">
         <label>Moneda</label>
         <select [(ngModel)]="config.currency">
           <option value="cop">COP (Colombia)</option>
@@ -365,15 +366,14 @@
         </button>
       </div>
       <div class="form-row" *ngIf="mostrarConfigAnticipados">
-        <label>
-          Porcentaje de ventas por anticipado
-          <span class="muted small">
+        <div class="anticipados-card">
+          <h3>Reglas de anticipados</h3>
+          <p class="muted small">
             Cada fila define el porcentaje mínimo de stikers vendidos para que exista ese premio anticipado.
             Si el porcentaje vendido permite N anticipados y los clientes compran los números bendecidos, hasta N anticipados podrán revelarse (sin importar el orden).
-          </span>
-        </label>
-        <div class="table-wrap">
-          <table class="data-table">
+          </p>
+          <div class="table-wrap">
+            <table class="data-table anticipados-table">
             <thead>
               <tr>
                 <th># Anticipado</th>
@@ -382,25 +382,27 @@
             </thead>
             <tbody>
               <tr *ngFor="let p of config.anticipadosPercent; let i = index">
-                <td>Anticipado {{ i + 1 }}</td>
+                <td class="anticipado-label">Anticipado {{ i + 1 }}</td>
                 <td>
                   <input
                     type="number"
                     min="1"
                     max="100"
                     step="1"
+                    placeholder="ej. 10"
                     [(ngModel)]="config.anticipadosPercent[i]">
                 </td>
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
       <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
         {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}
       </button>
       <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
-
+      </div>
       <div class="reset-stikers-box">
         <h4>Mantenimiento de stikers</h4>
         <p class="muted">
