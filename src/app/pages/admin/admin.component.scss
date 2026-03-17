@@ -476,6 +476,21 @@
   }
 }
 
+@media (max-width: 480px) {
+  .sorteo-card {
+    .sorteo-actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .sorteo-actions button {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: center;
+    }
+  }
+}
+
 .realizar-panel {
   margin-top: 1.5rem;
   padding: 1.25rem;
