@@ -67,7 +67,7 @@ export interface BeneficioAnticipado {
 export interface AppConfig {
   precio_stiker_cents?: string;
   currency?: string;
-  anticipado_step_percent?: string;
+  anticipados_percent?: string;
 }
 
 @Injectable({
@@ -145,7 +145,7 @@ export class AdminService {
     );
   }
 
-  updateConfig(body: { precioStikerCents?: number; currency?: string; anticipadoStepPercent?: number }): Observable<AppConfig | null> {
+  updateConfig(body: { precioStikerCents?: number; currency?: string; anticipadosPercent?: string }): Observable<AppConfig | null> {
     return this.http.patch<AppConfig>(`${this.base}/api/admin/config`, body).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );

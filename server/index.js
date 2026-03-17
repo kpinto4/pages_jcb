@@ -815,7 +815,7 @@ app.get('/api/admin/config', async (req, res) => {
 
 app.patch('/api/admin/config', async (req, res) => {
   try {
-    const { precioStikerCents, currency, anticipadoStepPercent } = req.body;
+    const { precioStikerCents, currency, anticipadosPercent } = req.body;
     if (precioStikerCents !== undefined) {
       const cents = Math.round(Number(precioStikerCents));
       if (cents < 0) return res.status(400).json({ error: 'Precio debe ser >= 0' });
@@ -825,12 +825,18 @@ app.patch('/api/admin/config', async (req, res) => {
       const val = currency.trim().toLowerCase();
       await db.prepare("INSERT INTO config (key, value) VALUES ('currency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(val);
     }
-    if (anticipadoStepPercent !== undefined) {
-      const step = Math.round(Number(anticipadoStepPercent));
-      if (!Number.isFinite(step) || step <= 0 || step > 100) {
-        return res.status(400).json({ error: 'El porcentaje para anticipados debe estar entre 1 y 100.' });
+    if (typeof anticipadosPercent === 'string') {
+      const raw = anticipadosPercent.split(',').map((p) => p.trim()).filter(Boolean);
+      if (raw.length > 0) {
+        const nums = raw.map((p) => {
+          const n = Math.round(Number(p));
+          return Number.isFinite(n) && n > 0 && n <= 100 ? n : null;
+        }).filter((n) => n !== null);
+        if (nums.length === 0) {
+          return res.status(400).json({ error: 'Los porcentajes de anticipados deben ser números entre 1 y 100.' });
+        }
+        await db.prepare("INSERT INTO config (key, value) VALUES ('anticipados_percent', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(nums.join(','));
       }
-      await db.prepare("INSERT INTO config (key, value) VALUES ('anticipado_step_percent', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(step));
     }
     const rows = await db.prepare('SELECT key, value FROM config').all();
     const config = {};
@@ -989,30 +995,40 @@ async function registrarBeneficiosAnticipados(orderId) {
     ? await db.prepare(baseQuery + ' AND sorteo_mayor_id = ? ORDER BY id ASC').all(order.sorteo_mayor_id)
     : await db.prepare(baseQuery + ' ORDER BY id ASC').all();
 
-  // Config global: porcentaje de stikers vendidos necesario para ir liberando anticipados
+  // Config global: porcentajes individuales para cada anticipado (lista CSV, posición = índice del anticipado)
   let sorteosBenef = sorteosBenefAll;
   try {
-    const cfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipado_step_percent'").get();
-    const step = cfg ? Math.round(Number(cfg.value)) : null;
-    if (step && Number.isFinite(step) && step > 0) {
-      const totalStikersSoldRow = await db.prepare(`
-        SELECT COUNT(*) as n
-        FROM stiker_slots ss
-        JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
-      `).get();
-      const totalStikersRow = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
-      const totalSold = Number(totalStikersSoldRow?.n ?? 0);
-      const totalSlots = Number(totalStikersRow?.n ?? 0);
-      if (totalSlots > 0) {
-        const pct = (totalSold / totalSlots) * 100;
-        const permitidos = Math.max(0, Math.min(sorteosBenefAll.length, Math.floor(pct / step)));
-        sorteosBenef = sorteosBenefAll.slice(0, permitidos);
-      } else {
-        sorteosBenef = [];
-      }
+    const cfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipados_percent'").get();
+    const rawList = cfg && typeof cfg.value === 'string'
+      ? String(cfg.value).split(',').map((p) => p.trim()).filter(Boolean)
+      : [];
+
+    // Parsear a números válidos 1–100; si no hay lista, por defecto todos al 100% (se liberan al final).
+    const thresholds = rawList.map((p) => {
+      const n = Math.round(Number(p));
+      return Number.isFinite(n) && n > 0 && n <= 100 ? n : 100;
+    });
+
+    const totalStikersSoldRow = await db.prepare(`
+      SELECT COUNT(*) as n
+      FROM stiker_slots ss
+      JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
+    `).get();
+    const totalStikersRow = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+    const totalSold = Number(totalStikersSoldRow?.n ?? 0);
+    const totalSlots = Number(totalStikersRow?.n ?? 0);
+
+    if (totalSlots > 0) {
+      const pct = (totalSold / totalSlots) * 100;
+      sorteosBenef = sorteosBenefAll.filter((_, idx) => {
+        const th = thresholds[idx] ?? 100;
+        return pct >= th;
+      });
+    } else {
+      sorteosBenef = [];
     }
   } catch (e) {
-    console.warn('Config anticipado_step_percent:', e?.message || e);
+    console.warn('Config anticipados_percent:', e?.message || e);
   }
 
   const insertBenef = db.prepare(`
