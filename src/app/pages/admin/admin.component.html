@@ -355,17 +355,46 @@
           <option value="mxn">MXN</option>
         </select>
       </div>
+      <!-- Configuración avanzada: porcentajes por anticipado -->
       <div class="form-row">
+        <button
+          type="button"
+          class="btn-secondary"
+          (click)="mostrarConfigAnticipados = !mostrarConfigAnticipados">
+          {{ mostrarConfigAnticipados ? 'Ocultar reglas de anticipados' : 'Mostrar reglas de anticipados (avanzado)' }}
+        </button>
+      </div>
+      <div class="form-row" *ngIf="mostrarConfigAnticipados">
         <label>
-          % de stikers vendidos por cada anticipado
-          <span class="muted small">(ej. 20 = se libera 1 anticipado por cada 20% vendido)</span>
+          Porcentaje de ventas por anticipado
+          <span class="muted small">
+            Cada fila define el porcentaje mínimo de stikers vendidos para que exista ese premio anticipado.
+            Si el porcentaje vendido permite N anticipados y los clientes compran los números bendecidos, hasta N anticipados podrán revelarse (sin importar el orden).
+          </span>
         </label>
-        <input
-          type="number"
-          min="1"
-          max="100"
-          step="1"
-          [(ngModel)]="config.anticipadoStepPercent">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th># Anticipado</th>
+                <th>% mínimo de stikers vendidos</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let p of config.anticipadosPercent; let i = index">
+                <td>Anticipado {{ i + 1 }}</td>
+                <td>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    [(ngModel)]="config.anticipadosPercent[i]">
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
         {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}

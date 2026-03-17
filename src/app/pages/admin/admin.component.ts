@@ -77,6 +77,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   private readonly BENEFICIOS_POLL_MS = 10000;
   private readonly destroy$ = new Subject<void>();
 
+  /** Muestra/oculta la configuración avanzada de porcentajes de anticipados. */
+  mostrarConfigAnticipados = false;
+
   constructor(
     private adminService: AdminService,
     private auth: AdminAuthService
