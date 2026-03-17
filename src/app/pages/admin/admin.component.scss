@@ -481,6 +481,22 @@
     cursor: pointer;
   }
 
+.btn-secondary.toggle-anticipados {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  border-radius: 999px;
+  padding: 0.45rem 1.1rem;
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.5);
+
+  &:hover {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--text);
+  }
+}
+
   .numeros-beneficiados {
     width: 100%;
     margin: 0.35rem 0 0;
@@ -639,7 +655,7 @@
 }
 
 .config-form {
-  max-width: 360px;
+  max-width: 640px;
   margin-top: 1rem;
   min-width: 0;
 
