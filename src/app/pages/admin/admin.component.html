@@ -311,6 +311,13 @@
             {{ n.numero_a }} - {{ n.numero_b }}
           </li>
         </ul>
+        <button
+          type="button"
+          class="btn-realizar"
+          [disabled]="!ganadorActual.ganador.telefono"
+          (click)="contactarPorWhatsappMayor()">
+          Contactar por WhatsApp
+        </button>
       </ng-container>
       <ng-template #sinGanador>
         <p class="muted">No había números vendidos cuando se realizó este sorteo. No hay cliente ganador.</p>
@@ -408,6 +415,7 @@
               <th>Número</th>
               <th>Email</th>
               <th>Teléfono</th>
+              <th>WhatsApp</th>
             </tr>
           </thead>
           <tbody>
@@ -419,6 +427,15 @@
               <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
               <td>{{ b.email }}</td>
               <td>{{ b.telefono }}</td>
+              <td>
+                <button
+                  type="button"
+                  class="btn-realizar"
+                  [disabled]="!b.telefono"
+                  (click)="contactarPorWhatsappBeneficio(b)">
+                  WhatsApp
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>

@@ -657,6 +657,51 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  private normalizePhone(tel: string | null | undefined): string {
+    if (!tel) return '';
+    let t = tel.toString().replace(/\D/g, '');
+    if (!t) return '';
+    // Asumimos Colombia (+57). Si ya viene con 57 al inicio y sobra longitud, recortamos a los últimos 10 dígitos.
+    if (t.length > 10 && t.startsWith('57')) {
+      t = t.slice(t.length - 10);
+    }
+    if (t.length === 10 && !t.startsWith('57')) {
+      t = '57' + t;
+    } else if (t.length < 12 && !t.startsWith('57')) {
+      t = '57' + t;
+    }
+    return t;
+  }
+
+  private openWhatsApp(tel: string | null | undefined, message: string): void {
+    const phone = this.normalizePhone(tel);
+    if (!phone) {
+      this.error = 'El cliente no tiene un teléfono válido para WhatsApp.';
+      return;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  }
+
+  contactarPorWhatsappBeneficio(b: BeneficioAnticipado): void {
+    const nombre = (b.nombre || 'cliente').trim();
+    const sorteoNombre = (b.sorteo_nombre || `Sorteo #${b.sorteo_id}`).trim();
+    const mensaje = `Hola ${nombre}, te contactamos de Juego de la Ciudad Bonita. Tu stiker ${b.numero_a} - ${b.numero_b} resultó ganador de un premio anticipado en el sorteo "${sorteoNombre}".`;
+    this.openWhatsApp(b.telefono, mensaje);
+  }
+
+  contactarPorWhatsappMayor(): void {
+    if (!this.ganadorActual || !this.ganadorActual.ganador) return;
+    const g = this.ganadorActual.ganador;
+    const sorteo = this.ganadorActual.sorteo;
+    const nombre = (g.nombre || 'cliente').trim();
+    const sorteoNombre = (sorteo?.nombre || 'Premio Mayor').trim();
+    const fecha = this.formatDate(sorteo?.fecha || '');
+    const numerosCliente = (g.numeros || []).map(n => `${n.numero_a} - ${n.numero_b}`).join(', ');
+    const mensaje = `Hola ${nombre}, te contactamos de Juego de la Ciudad Bonita. Tus stikers (${numerosCliente}) resultaron ganadores del Premio Mayor en el sorteo "${sorteoNombre}" realizado el ${fecha}.`;
+    this.openWhatsApp(g.telefono, mensaje);
+  }
+
   /** trackBy para *ngFor de sorteos individuales (activos y anticipados dentro de grupos) */
   trackBySorteoId(_: number, s: Sorteo): number {
     return s.id;
