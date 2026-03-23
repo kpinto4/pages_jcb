@@ -1,1 +1,54 @@
-{"name":"pages-jcb","version":"0.0.0","type":"module","engines":{"node":">=18.0.0"},"scripts":{"ng":"ng","start":"ng serve","build":"ng build","install-all":"npm install && npm install --prefix server","dev":"concurrently -n front,back -c cyan,green \"ng serve\" \"npm run dev --prefix server\"","watch":"ng build --watch --configuration development","test":"ng test"},"private":true,"dependencies":{"@angular/common":"^19.2.0","@angular/compiler":"^19.2.0","@angular/core":"^19.2.0","@angular/forms":"^19.2.0","@angular/platform-browser":"^19.2.0","@angular/platform-browser-dynamic":"^19.2.0","@angular/router":"^19.2.0","@neondatabase/serverless":"^1.0.0","cors":"^2.8.5","dotenv":"^16.4.5","express":"^4.21.0","jsonwebtoken":"^9.0.3","multer":"^1.4.5-lts.1","pg":"^8.13.0","rxjs":"~7.8.0","stripe":"^17.4.0","tslib":"^2.3.0","ws":"^8.18.0","zone.js":"~0.15.0"},"devDependencies":{"concurrently":"^9.1.0","@angular-devkit/build-angular":"^19.2.7","@angular/cli":"^19.2.7","@angular/compiler-cli":"^19.2.0","@types/jasmine":"~5.1.0","jasmine-core":"~5.6.0","karma":"~6.4.0","karma-chrome-launcher":"~3.2.0","karma-coverage":"~2.2.0","karma-jasmine":"~5.1.0","karma-jasmine-html-reporter":"~2.1.0","typescript":"~5.7.2"}}
+{
+    "name": "pages-jcb",
+    "version": "0.0.0",
+    "type": "module",
+    "engines": {
+      "node": ">=18.0.0"
+    },
+    "scripts": {
+      "ng": "ng",
+      "start": "ng serve",
+      "build": "ng build --configuration production",
+      "install-all": "npm install && npm install --prefix server",
+      "dev": "concurrently -n front,back -c cyan,green \"ng serve\" \"npm run dev --prefix server\"",
+      "prod": "npm run build && concurrently -n front,back -c cyan,green \"npx serve -s dist/pages_jcb/browser -l 3015\" \"npm run start --prefix server\"",
+      "watch": "ng build --watch --configuration development",
+      "test": "ng test"
+    },
+    "private": true,
+    "dependencies": {
+      "@angular/common": "^19.2.0",
+      "@angular/compiler": "^19.2.0",
+      "@angular/core": "^19.2.0",
+      "@angular/forms": "^19.2.0",
+      "@angular/platform-browser": "^19.2.0",
+      "@angular/platform-browser-dynamic": "^19.2.0",
+      "@angular/router": "^19.2.0",
+      "@neondatabase/serverless": "^1.0.0",
+      "cors": "^2.8.5",
+      "dotenv": "^16.4.5",
+      "express": "^4.21.0",
+      "jsonwebtoken": "^9.0.3",
+      "multer": "^1.4.5-lts.1",
+      "pg": "^8.13.0",
+      "rxjs": "~7.8.0",
+      "stripe": "^17.4.0",
+      "tslib": "^2.3.0",
+      "ws": "^8.18.0",
+      "zone.js": "~0.15.0"
+    },
+    "devDependencies": {
+      "concurrently": "^9.1.0",
+      "@angular-devkit/build-angular": "^19.2.7",
+      "@angular/cli": "^19.2.7",
+      "@angular/compiler-cli": "^19.2.0",
+      "@types/jasmine": "~5.1.0",
+      "jasmine-core": "~5.6.0",
+      "karma": "~6.4.0",
+      "karma-chrome-launcher": "~3.2.0",
+      "karma-coverage": "~2.2.0",
+      "karma-jasmine": "~5.1.0",
+      "karma-jasmine-html-reporter": "~2.1.0",
+      "typescript": "~5.7.2"
+    }
+  }
