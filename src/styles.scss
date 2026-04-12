@@ -54,3 +54,31 @@ img {
   height: auto;
   display: block;
 }
+
+/* Placeholders animados para estados de carga (hero, grid de stikers, etc.) */
+@keyframes sk-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-light) 45%,
+    var(--surface) 90%
+  );
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.25s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background: var(--surface);
+  }
+}

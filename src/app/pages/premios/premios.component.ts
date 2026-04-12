@@ -2,11 +2,12 @@ import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Sorteo } from '../../core/services/sorteos.service';
 import { resolveImageUrl } from '../../core/services/api-url';
+import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
 
 @Component({
   selector: 'app-premios',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LoadingIndicatorComponent],
   templateUrl: './premios.component.html',
   styleUrls: ['./premios.component.scss']
 })
@@ -18,6 +19,8 @@ export class PremiosComponent {
     ganador_telefono?: string;
   })[] = [];
   @Input() loading = false;
+
+  readonly premioSkeletonSlots = [0, 1, 2];
 
   /** Sorteos expandidos (solo imagen visible por defecto, clic despliega info). */
   expandedIds = new Set<number>();

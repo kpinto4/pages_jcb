@@ -2,11 +2,12 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PaymentService, StikerCompradoFromApi } from '../../core/services/payment.service';
+import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
 
 @Component({
   selector: 'app-verificar-stiker',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LoadingIndicatorComponent],
   templateUrl: './verificar-boleta.component.html',
   styleUrls: ['./verificar-boleta.component.scss']
 })

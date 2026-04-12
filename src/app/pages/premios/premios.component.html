@@ -1,7 +1,19 @@
 <section class="premios">
   <h2>Últimos premios mayores realizados</h2>
 
-  <p *ngIf="loading" class="loading">Cargando...</p>
+  <div *ngIf="loading" class="premios-loading">
+    <app-loading-indicator
+      message="Cargando premios realizados..."
+      layout="block"
+      size="md"
+    />
+    <div class="premios-skeleton-cards" aria-hidden="true">
+      <div
+        class="premios-skeleton-card skeleton-shimmer"
+        *ngFor="let _ of premioSkeletonSlots"
+      ></div>
+    </div>
+  </div>
 
   <div class="cards" *ngIf="!loading && sorteos.length > 0">
     <div
@@ -41,5 +53,5 @@
     </div>
   </div>
 
-  <p *ngIf="!loading && sorteos.length === 0" class="loading">Aún no hay premios mayores realizados.</p>
+  <p *ngIf="!loading && sorteos.length === 0" class="empty-msg">Aún no hay premios mayores realizados.</p>
 </section>

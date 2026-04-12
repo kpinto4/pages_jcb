@@ -56,10 +56,20 @@
     margin-top: 0.5rem;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 
-    &:hover {
+    &:hover:not(:disabled) {
       transform: scale(1.02);
       box-shadow: 0 6px 20px var(--accent-light);
     }
+
+    &:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+  }
+
+  .verify-loading {
+    margin-top: 1.5rem;
   }
 
   .error-msg {

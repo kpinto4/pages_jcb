@@ -1,14 +1,15 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, finalize } from 'rxjs';
 import { SorteosService, Sorteo, ProgresoResponse } from '../../core/services/sorteos.service';
 import { resolveImageUrl } from '../../core/services/api-url';
+import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
 
 @Component({
   selector: 'app-hero-rifa',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, LoadingIndicatorComponent],
   templateUrl: './hero-rifa.component.html',
   styleUrls: ['./hero-rifa.component.scss']
 })
@@ -27,6 +28,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
+  /** Evita mostrar “próximamente” antes de que responda el API */
+  cargandoHero = true;
 
   private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly destroy$ = new Subject<void>();
@@ -52,19 +55,33 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   }
 
   private loadHomeData(): void {
-    this.sorteosService.getHomeData().pipe(takeUntil(this.destroy$)).subscribe((data) => {
-      if (!data) return;
-      this.principal = data.principal ?? null;
-      if (!this.principal) return;
+    this.cargandoHero = true;
+    this.sorteosService
+      .getHomeData()
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => {
+          this.cargandoHero = false;
+        })
+      )
+      .subscribe({
+        next: (data) => {
+          if (!data) {
+            this.principal = null;
+            return;
+          }
+          this.principal = data.principal ?? null;
+          if (!this.principal) return;
 
-      if (this.principal.imagen_url) {
-        console.log("imagen original:", this.principal.imagen_url);
-        console.log("imagen resuelta:", resolveImageUrl(this.principal.imagen_url));
-        this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
-          console.log(this.principal.imagen_url);
-      }
-      this.startCountdownFromDate(this.principal.fecha);
-    });
+          if (this.principal.imagen_url) {
+            this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+          }
+          this.startCountdownFromDate(this.principal.fecha);
+        },
+        error: () => {
+          this.principal = null;
+        }
+      });
   }
 
   private loadProgreso(): void {

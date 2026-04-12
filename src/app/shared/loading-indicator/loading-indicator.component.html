@@ -1,0 +1,13 @@
+<div
+  class="loading-indicator"
+  [class.layout-inline]="layout === 'inline'"
+  [class.layout-block]="layout === 'block'"
+  [class.size-sm]="size === 'sm'"
+  [class.size-md]="size === 'md'"
+  [class.size-lg]="size === 'lg'"
+  role="status"
+  aria-live="polite"
+>
+  <span class="spinner" aria-hidden="true"></span>
+  <span class="message" *ngIf="message">{{ message }}</span>
+</div>

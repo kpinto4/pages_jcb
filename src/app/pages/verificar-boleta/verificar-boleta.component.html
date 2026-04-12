@@ -18,6 +18,14 @@
     </button>
   </form>
 
+  <app-loading-indicator
+    *ngIf="buscando"
+    class="verify-loading"
+    message="Consultando tus stikers..."
+    layout="block"
+    size="md"
+  />
+
   <p class="error-msg" *ngIf="error">{{ error }}</p>
 
   <!-- Resultado -->

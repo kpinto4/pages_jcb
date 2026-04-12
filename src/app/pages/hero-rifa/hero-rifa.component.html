@@ -1,5 +1,19 @@
 <section class="hero">
-  <div class="hero-content">
+  <div *ngIf="cargandoHero" class="hero-content hero-loading-layout">
+    <div class="hero-skeleton-image skeleton-shimmer" aria-hidden="true"></div>
+    <div class="hero-skeleton-aside">
+      <div class="hero-sk-line hero-sk-title skeleton-shimmer" aria-hidden="true"></div>
+      <div class="hero-sk-line skeleton-shimmer" aria-hidden="true"></div>
+      <div class="hero-sk-line hero-sk-short skeleton-shimmer" aria-hidden="true"></div>
+      <app-loading-indicator
+        message="Cargando información del sorteo..."
+        layout="block"
+        size="md"
+      />
+    </div>
+  </div>
+
+  <div *ngIf="!cargandoHero" class="hero-content">
 
     <!-- Imagen Premio Mayor (oculta si no hay sorteo) -->
     <img

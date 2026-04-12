@@ -119,9 +119,22 @@
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-.cargando-stikers {
-  color: var(--text-muted);
-  margin-bottom: 1rem;
+.stikers-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.stikers-skeleton-cell {
+  min-height: 4.75rem;
+  border-radius: var(--radius);
+  border: 2px solid var(--border);
+}
+
+.pago-loader {
+  display: block;
+  margin-top: 1rem;
 }
 
 .sin-sorteo {
@@ -487,18 +500,6 @@
     border-color: var(--text-muted);
     color: var(--text);
   }
-}
-
-.loader {
-  margin-top: 1.5rem;
-  font-weight: 600;
-  color: var(--accent);
-  animation: pulse 1.2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
 }
 
 .btn-primary {

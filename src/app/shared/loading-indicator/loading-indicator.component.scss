@@ -1,0 +1,66 @@
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.95rem;
+
+  &.layout-block {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    padding: 0.5rem 0 0;
+  }
+
+  &.layout-inline {
+    flex-direction: row;
+  }
+}
+
+.spinner {
+  flex-shrink: 0;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: var(--border);
+  border-top-color: var(--accent);
+  animation: app-loading-spin 0.72s linear infinite;
+}
+
+.size-sm .spinner {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-width: 2px;
+}
+
+.size-md .spinner {
+  width: 2rem;
+  height: 2rem;
+  border-width: 3px;
+}
+
+.size-lg .spinner {
+  width: 2.65rem;
+  height: 2.65rem;
+  border-width: 4px;
+}
+
+.message {
+  line-height: 1.45;
+  max-width: 22rem;
+}
+
+@keyframes app-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-color: var(--surface-light);
+    border-top-color: var(--accent);
+    opacity: 0.9;
+  }
+}

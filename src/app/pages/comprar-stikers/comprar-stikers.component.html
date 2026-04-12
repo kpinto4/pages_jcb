@@ -31,7 +31,19 @@
 
     <h3>Selecciona tus stikers</h3>
 
-    <p class="cargando-stikers" *ngIf="cargandoStikers">Cargando stikers disponibles...</p>
+    <ng-container *ngIf="cargandoStikers">
+      <app-loading-indicator
+        message="Cargando stikers disponibles..."
+        layout="block"
+        size="md"
+      />
+      <div class="stikers-skeleton-grid" aria-hidden="true">
+        <div
+          class="stikers-skeleton-cell skeleton-shimmer"
+          *ngFor="let _ of stikerSkeletonSlots"
+        ></div>
+      </div>
+    </ng-container>
 
     <!-- Sin sorteo activo: no hay stikers disponibles -->
     <div *ngIf="!cargandoStikers && stikers.length === 0" class="sin-sorteo">
@@ -178,9 +190,13 @@
 
     <p class="error-msg" *ngIf="errorPago">{{ errorPago }}</p>
 
-    <div *ngIf="procesandoPago" class="loader">
-      {{ verificandoVueltaPago ? 'Verificando tu pago...' : 'Redirigiendo a la pasarela de pago...' }}
-    </div>
+    <app-loading-indicator
+      *ngIf="procesandoPago"
+      class="pago-loader"
+      [message]="verificandoVueltaPago ? 'Verificando tu pago...' : 'Redirigiendo a la pasarela de pago...'"
+      layout="block"
+      size="lg"
+    />
 
     <div *ngIf="!procesandoPago" class="acciones">
       <button type="button" class="btn-outline" (click)="prevStep()">Volver</button>
@@ -196,7 +212,11 @@
   <!-- PASO 4: verificando pago (volvimos de Wompi, consultando estado) -->
   <div *ngIf="step === 4 && verificandoVueltaPago" class="panel confirmacion confirmacion-pendiente">
     <h3>Verificando tu pago</h3>
-    <p class="loader">Un momento, estamos confirmando con el servidor...</p>
+    <app-loading-indicator
+      message="Un momento, estamos confirmando con el servidor..."
+      layout="block"
+      size="lg"
+    />
   </div>
 
   <!-- PASO 4: pago en verificación (webhook aún no llegó) -->

@@ -5,6 +5,7 @@ import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { Subject, takeUntil, startWith, forkJoin } from 'rxjs';
 import { PaymentService, SessionDetails } from '../../core/services/payment.service';
 import { SorteosService } from '../../core/services/sorteos.service';
+import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
 
 interface Stiker {
   numeroA: string;
@@ -15,7 +16,7 @@ interface Stiker {
 @Component({
   selector: 'app-comprar-stikers',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, LoadingIndicatorComponent],
   templateUrl: './comprar-stikers.component.html',
   styleUrls: ['./comprar-stikers.component.scss']
 })
@@ -40,6 +41,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   cantidadAleatoria = 1;
 
   readonly PAGE_SIZE = 100;
+  /** Celdas del esqueleto mientras llega la grilla de stikers */
+  readonly stikerSkeletonSlots = Array.from({ length: 24 }, (_, i) => i);
   currentPage = 1;
 
   stikers: Stiker[] = [];

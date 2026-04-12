@@ -13,7 +13,29 @@
     font-weight: 700;
   }
 
-  .loading {
+  .premios-loading {
+    max-width: 1200px;
+    margin: 0 auto 2rem;
+  }
+
+  .premios-skeleton-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+  }
+
+  .premios-skeleton-card {
+    flex: 0 1 280px;
+    width: 100%;
+    max-width: 320px;
+    height: 220px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+  }
+
+  .empty-msg {
     text-align: center;
     color: var(--text-muted);
   }
