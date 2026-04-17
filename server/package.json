@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "start:prod": "cross-env NODE_ENV=production node index.js",
+    "start:prod": "node --import ./node-env-production.mjs index.js",
     "dev": "node --watch index.js"
   },
   "dependencies": {
@@ -22,8 +22,5 @@
     "nodemailer": "^6.10.1",
     "pg": "^8.13.0",
     "ws": "^8.19.0"
-  },
-  "devDependencies": {
-    "cross-env": "^7.0.3"
   }
 }
