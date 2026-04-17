@@ -6,6 +6,7 @@ import { Subject, takeUntil, startWith, forkJoin } from 'rxjs';
 import { PaymentService, SessionDetails } from '../../core/services/payment.service';
 import { SorteosService } from '../../core/services/sorteos.service';
 import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
+import { environment } from '../../../environments/environment';
 
 interface Stiker {
   numeroA: string;
@@ -21,6 +22,9 @@ interface Stiker {
   styleUrls: ['./comprar-stikers.component.scss']
 })
 export class ComprarStikersComponent implements OnInit, OnDestroy {
+
+  /** Solo en build de desarrollo; en producción las pruebas van por Wompi sandbox (pub_test_*) */
+  readonly allowSimulatePayment = !environment.production;
 
   private readonly destroy$ = new Subject<void>();
   step = 1;
@@ -257,6 +261,21 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
 
   get seleccionados(): Stiker[] {
     return this.stikers.filter(s => s.estado === 'seleccionado');
+  }
+
+  /** Vista compacta para la barra fija (máx. 4 pares + “+N más”). */
+  get seleccionResumenUnaLinea(): string {
+    const sel = this.seleccionados;
+    if (sel.length === 0) return '';
+    const maxPairs = 4;
+    const shown = sel.slice(0, maxPairs).map((s) => `${s.numeroA}-${s.numeroB}`);
+    if (sel.length > maxPairs) shown.push(`+${sel.length - maxPairs} más`);
+    return shown.join(' · ');
+  }
+
+  /** Tooltip / título con todos los pares. */
+  get seleccionResumenTooltip(): string {
+    return this.seleccionados.map((s) => `${s.numeroA}-${s.numeroB}`).join(', ');
   }
 
   seleccionarAleatorios(): void {

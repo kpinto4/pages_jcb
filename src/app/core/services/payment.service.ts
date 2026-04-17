@@ -126,11 +126,11 @@ export class PaymentService {
   /**
    * Comprueba si el backend de pago está disponible y si Wompi está configurado.
    */
-  healthCheck(): Observable<{ ok: boolean; wompi: boolean }> {
+  healthCheck(): Observable<{ ok: boolean; wompi: boolean; simulatePayment?: boolean }> {
     if (!this.apiUrl) {
       return of({ ok: false, wompi: false });
     }
-    return this.http.get<{ ok: boolean; wompi: boolean }>(`${this.apiUrl}/api/health`).pipe(
+    return this.http.get<{ ok: boolean; wompi: boolean; simulatePayment?: boolean }>(`${this.apiUrl}/api/health`).pipe(
       catchError(() => of({ ok: false, wompi: false }))
     );
   }

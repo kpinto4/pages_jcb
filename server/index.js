@@ -75,17 +75,23 @@ if (db && process.env.DATABASE_URL) {
     console.warn('Seed stiker_slots:', e.message);
   }
 }
-// Auto-limpieza de órdenes pendientes expiradas al arrancar (se ejecuta una vez al inicio y cada hora)
+/** Órdenes `pending` sin pago: liberar stikers tras este tiempo (min). Rango 5–30; por defecto 30. */
+const pendingOrderExpireMinutes = Math.min(30, Math.max(5, Number.parseInt(process.env.PENDING_ORDER_EXPIRE_MINUTES ?? '30', 10) || 30));
+/** Intervalo de la tarea de limpieza: a lo sumo la mitad del tiempo de expiración, entre 5 y 15 min. */
+const pendingCleanupIntervalMs = Math.max(
+  5 * 60 * 1000,
+  Math.min(15 * 60 * 1000, Math.floor(pendingOrderExpireMinutes / 2) * 60 * 1000)
+);
+// Auto-limpieza de órdenes pendientes expiradas al arrancar y luego cada pendingCleanupIntervalMs
 async function scheduleCleanup() {
   if (!db) return;
   try {
-    const n = await limpiarPendientesExpirados(120);
-    if (n > 0) console.log(`Auto-limpieza al arrancar: ${n} órdenes pendientes expiradas liberadas.`);
+    const n = await limpiarPendientesExpirados(pendingOrderExpireMinutes);
+    if (n > 0) console.log(`Auto-limpieza pendientes: ${n} órdenes expiradas (>${pendingOrderExpireMinutes} min).`);
   } catch (e) {
     console.warn('Auto-limpieza pendientes:', e.message);
   }
-  // Repetir cada hora
-  setTimeout(scheduleCleanup, 60 * 60 * 1000);
+  setTimeout(scheduleCleanup, pendingCleanupIntervalMs);
 }
 
 const app = express();
@@ -102,6 +108,9 @@ const wompiRedirectOverride = (process.env.WOMPI_REDIRECT_URL_OVERRIDE || '').tr
 const wompiSuccessUrlOverride = (process.env.WOMPI_SUCCESS_URL || '').trim();
 const wompiRedirectFallback = 'https://transaction-redirect.wompi.co/check';
 const wompiEnabled = !!(wompiPublicKey && wompiIntegritySecret);
+const isProduction = process.env.NODE_ENV === 'production';
+/** “Simular pago” solo con servidor en desarrollo; producción debe usar Wompi (sandbox pub_test_* o llaves de producción). */
+const simulatePaymentAllowed = !isProduction;
 
 /** Firma de integridad Wompi (Colombia): SHA256(Reference + Amount + Currency + IntegritySecret). Orden exacto según docs. */
 function wompiSignature(reference, amountInCents, currency) {
@@ -168,6 +177,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     wompi: wompiEnabled,
+    simulatePayment: simulatePaymentAllowed,
+    nodeEnv: process.env.NODE_ENV || 'development',
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
     dbConnected: !!db,
@@ -251,7 +262,7 @@ app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
  * Libera los stiker_slots bloqueados por órdenes 'pending' con más de `ageMinutes` minutos de antigüedad.
  * Retorna la cantidad de órdenes expiradas procesadas.
  */
-async function limpiarPendientesExpirados(ageMinutes = 120) {
+async function limpiarPendientesExpirados(ageMinutes = pendingOrderExpireMinutes) {
   const cutoff = new Date(Date.now() - ageMinutes * 60 * 1000).toISOString();
   // Contar cuántas órdenes serán afectadas antes de modificar
   const countRow = await db.prepare(
@@ -282,7 +293,10 @@ async function limpiarPendientesExpirados(ageMinutes = 120) {
 
 app.post('/api/admin/limpiar-pendientes', async (req, res) => {
   try {
-    const ageMinutes = Math.max(30, parseInt(req.query.minutes, 10) || 120);
+    const q = parseInt(req.query.minutes, 10);
+    const ageMinutes = Number.isFinite(q)
+      ? Math.min(30, Math.max(5, q))
+      : pendingOrderExpireMinutes;
     const n = await limpiarPendientesExpirados(ageMinutes);
     console.log(`Limpieza de pendientes: ${n} órdenes expiradas liberadas.`);
     res.json({ ok: true, expiradas: n, ageMinutes });
@@ -418,8 +432,13 @@ app.post('/api/create-checkout-session', async (req, res) => {
     }
 
     if (!wompiEnabled) {
+      const hintSandbox =
+        'Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET). Para pruebas sin cobro real usa llaves de sandbox (pub_test_*).';
+      const hintSimulate = simulatePaymentAllowed
+        ? ' En este entorno (desarrollo) también puedes usar "Simular pago".'
+        : '';
       return res.status(503).json({
-        error: 'Pagos con tarjeta en mantenimiento. Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET), o usa "Simular pago" para pruebas.'
+        error: `Pagos con tarjeta en mantenimiento. ${hintSandbox}${hintSimulate}`
       });
     }
 
@@ -507,9 +526,16 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// ----- SIMULAR PAGO (pruebas: registra orden pagada sin pasarela) -----
+// ----- SIMULAR PAGO (solo desarrollo: registra orden pagada sin pasarela) -----
 app.post('/api/simulate-payment', async (req, res) => {
   try {
+    if (!simulatePaymentAllowed) {
+      return res.status(403).json({
+        error:
+          'Simular pago no está disponible en producción. Usa Wompi con claves de sandbox (pub_test_*) en .env para pruebas sin afectar cobros reales, o desarrolla solo con NODE_ENV distinto de production en local.'
+      });
+    }
+
     if (!(await hayPremioMayorActivo())) {
       return res.status(400).json({
         error: 'No hay sorteo activo. Las compras de stikers están cerradas.'
@@ -1400,10 +1426,18 @@ app.get('/api/progreso', async (req, res) => {
 app.listen(port, () => {
   console.log(`Servidor en http://localhost:${port}`);
   if (!wompiEnabled) {
-    console.warn('⚠️  Wompi no configurado. Define WOMPI_PUBLIC_KEY y WOMPI_INTEGRITY_SECRET en server/.env para pagos con tarjeta, o usa "Simular pago".');
+    if (isProduction) {
+      console.warn('⚠️  Wompi no configurado en producción. Define WOMPI_PUBLIC_KEY y WOMPI_INTEGRITY_SECRET (sandbox: pub_test_* para pruebas).');
+    } else {
+      console.warn('⚠️  Wompi no configurado. Define las claves en server/.env o usa "Simular pago" (solo con servidor en desarrollo).');
+    }
   } else {
     console.log('💳 Wompi activo' + (wompiPublicKey.startsWith('pub_test_') ? ' (sandbox)' : ' (producción)'));
   }
+  if (simulatePaymentAllowed) {
+    console.log('🧪 Simular pago: habilitado (modo desarrollo). En producción (NODE_ENV=production) esta ruta queda desactivada.');
+  }
+  console.log(`⏱️  Pendientes sin pago: expiran a los ${pendingOrderExpireMinutes} min; limpieza automática cada ${Math.round(pendingCleanupIntervalMs / 60000)} min.`);
   if (!adminPassword) {
     console.warn('⚠️  ADMIN_PASSWORD no definida. El panel /admin no permitirá login.');
   }

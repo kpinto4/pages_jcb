@@ -92,7 +92,14 @@
 
     <!-- Barra fija: resumen + Continuar siempre visible (no hay que deslizar) -->
     <div *ngIf="!cargandoStikers && stikers.length > 0" class="resumen-sticky">
-      <span class="resumen-sticky-count">{{ seleccionados.length }} stikers</span>
+      <div class="resumen-sticky-text">
+        <span class="resumen-sticky-count">{{ seleccionados.length }} stikers</span>
+        <span
+          *ngIf="seleccionados.length > 0"
+          class="resumen-sticky-detail"
+          [attr.title]="seleccionResumenTooltip"
+        >{{ seleccionResumenUnaLinea }}</span>
+      </div>
       <button
         class="btn-primary"
         [disabled]="seleccionados.length === 0"
@@ -135,7 +142,10 @@
 
     <!-- Resumen inline (visible al llegar al final, para usuarios que deslizan) -->
     <div class="resumen" *ngIf="stikers.length > 0" aria-hidden="true">
-      <p>{{ seleccionados.length }} stikers seleccionados</p>
+      <div class="resumen-inline-text">
+        <p>{{ seleccionados.length }} stikers seleccionados</p>
+        <p *ngIf="seleccionados.length > 0" class="resumen-inline-detail">{{ seleccionResumenUnaLinea }}</p>
+      </div>
       <button
         class="btn-primary"
         [disabled]="seleccionados.length === 0"
@@ -150,6 +160,15 @@
   <div *ngIf="step === 2" class="panel panel-form">
     <h3 class="panel-title">Datos del comprador</h3>
     <p class="panel-desc">Completa tu información para procesar la compra y enviar la confirmación.</p>
+
+    <div *ngIf="seleccionados.length > 0" class="seleccion-resumen-box" role="region" aria-label="Stikers seleccionados">
+      <p class="seleccion-resumen-titulo">Tu selección · {{ seleccionados.length }} stiker(s)</p>
+      <ul class="seleccion-resumen-lista">
+        <li *ngFor="let s of seleccionados">
+          <span class="pair">{{ s.numeroA }}</span><span class="sep" aria-hidden="true">–</span><span class="pair">{{ s.numeroB }}</span>
+        </li>
+      </ul>
+    </div>
 
     <form class="form-datos">
       <div class="form-group">
@@ -185,6 +204,15 @@
       El pago fue cancelado. Puedes intentar de nuevo o volver atrás.
     </p>
 
+    <div *ngIf="seleccionados.length > 0" class="seleccion-resumen-box seleccion-resumen-box--pago" role="region" aria-label="Stikers en este pago">
+      <p class="seleccion-resumen-titulo">Incluidos en este pago · {{ seleccionados.length }} stiker(s)</p>
+      <ul class="seleccion-resumen-lista">
+        <li *ngFor="let s of seleccionados">
+          <span class="pair">{{ s.numeroA }}</span><span class="sep" aria-hidden="true">–</span><span class="pair">{{ s.numeroB }}</span>
+        </li>
+      </ul>
+    </div>
+
     <p>Total a pagar</p>
     <strong class="total-amount">{{ formatearPrecio(total, currency) }}</strong>
 
@@ -203,8 +231,13 @@
       <button type="button" class="btn-primary" (click)="irAPagar()">
         Pagar con tarjeta
       </button>
-      <button type="button" class="btn-demo" (click)="simularPago()">
-        Simular pago (pruebas)
+      <button
+        *ngIf="allowSimulatePayment"
+        type="button"
+        class="btn-demo"
+        (click)="simularPago()"
+      >
+        Simular pago (solo desarrollo)
       </button>
     </div>
   </div>

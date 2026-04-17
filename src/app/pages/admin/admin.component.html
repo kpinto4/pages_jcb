@@ -406,7 +406,7 @@
       <div class="reset-stikers-box">
         <h4>Mantenimiento de stikers</h4>
         <p class="muted">
-          <strong>Limpiar pendientes expirados:</strong> libera los slots bloqueados por checkouts abandonados (más de 2 horas sin pago).
+          <strong>Limpiar pendientes expirados:</strong> libera los slots bloqueados por checkouts abandonados (por defecto más de 30 min sin pago; configurable en el servidor con <code>PENDING_ORDER_EXPIRE_MINUTES</code>).
           Ejecuta esto si hay stikers que no se pueden comprar sin razón aparente.
         </p>
         <button type="button" class="btn-realizar" [disabled]="limpiandoPendientes" (click)="limpiarPendientes()">
