@@ -15,13 +15,26 @@
 
   <div *ngIf="!cargandoHero" class="hero-content">
 
-    <!-- Imagen Premio Mayor (oculta si no hay sorteo) -->
-    <img
-      *ngIf="principal"
-      [src]="heroImageUrl"
-      alt="Premio Mayor"
-      class="hero-image"
-    >
+    <!-- Imagen Premio Mayor (spinner mientras carga la foto) -->
+    <div *ngIf="principal" class="hero-image-wrap">
+      <img
+        *ngIf="!heroImgFailed"
+        [src]="heroImageUrl"
+        alt="Premio Mayor"
+        class="hero-image"
+        [class.hero-image--visible]="heroImgLoaded"
+        (load)="onHeroImgLoad()"
+        (error)="onHeroImgError()"
+      />
+      <div
+        *ngIf="!heroImgLoaded || heroImgFailed"
+        class="hero-image-overlay"
+        aria-live="polite"
+      >
+        <span *ngIf="!heroImgLoaded && !heroImgFailed" class="hero-spinner" aria-label="Cargando imagen del premio"></span>
+        <span *ngIf="heroImgFailed" class="hero-image-error">No se pudo cargar la imagen.</span>
+      </div>
+    </div>
 
     <!-- Texto + Contador + Progreso -->
     <div class="hero-text">

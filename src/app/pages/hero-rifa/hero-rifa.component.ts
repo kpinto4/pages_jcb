@@ -30,6 +30,9 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   heroImageUrl = 'assets/img/premio-mayor.jpg';
   /** Evita mostrar “próximamente” antes de que responda el API */
   cargandoHero = true;
+  /** Carga de la imagen del premio (spinner hasta load/error) */
+  heroImgLoaded = false;
+  heroImgFailed = false;
 
   private countdownIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly destroy$ = new Subject<void>();
@@ -73,8 +76,12 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
           this.principal = data.principal ?? null;
           if (!this.principal) return;
 
+          this.heroImgLoaded = false;
+          this.heroImgFailed = false;
           if (this.principal.imagen_url) {
             this.heroImageUrl = resolveImageUrl(this.principal.imagen_url) || this.heroImageUrl;
+          } else {
+            this.heroImageUrl = 'assets/img/premio-mayor.jpg';
           }
           this.startCountdownFromDate(this.principal.fecha);
         },
@@ -107,6 +114,16 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
     this.countdownIntervalId = setInterval(() => {
       this.updateCountdown(targetDate);
     }, 1000);
+  }
+
+  onHeroImgLoad(): void {
+    this.heroImgLoaded = true;
+    this.heroImgFailed = false;
+  }
+
+  onHeroImgError(): void {
+    this.heroImgFailed = true;
+    this.heroImgLoaded = true;
   }
 
   private updateCountdown(targetTime: number): void {

@@ -1,0 +1,221 @@
+.contact-root {
+  position: relative;
+  z-index: 300;
+}
+
+.contact-fab {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: 3.35rem;
+  height: 3.35rem;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(145deg, #25d366, #128c7e);
+  box-shadow:
+    0 4px 14px rgba(37, 211, 102, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow:
+      0 6px 20px rgba(37, 211, 102, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px var(--accent-light),
+      0 4px 14px rgba(37, 211, 102, 0.45);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.contact-fab-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.contact-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  z-index: 301;
+  animation: contact-fade-in 0.2s ease;
+}
+
+.contact-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 302;
+  max-height: min(85vh, 28rem);
+  padding: 0.5rem 1.25rem 1.25rem;
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
+  animation: contact-sheet-up 0.28s ease;
+}
+
+@media (min-width: 640px) {
+  .contact-sheet {
+    left: auto;
+    width: min(22rem, calc(100vw - 2rem));
+    bottom: max(5.5rem, env(safe-area-inset-bottom));
+    right: max(1rem, env(safe-area-inset-right));
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 1rem 1.25rem 1.1rem;
+    max-height: none;
+    animation: contact-pop-in 0.22s ease;
+  }
+}
+
+.contact-sheet-handle {
+  width: 2.5rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 0.25rem auto 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .contact-sheet-handle {
+    display: none;
+  }
+}
+
+.contact-sheet-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.contact-sheet-sub {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.contact-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--background);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--background));
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+}
+
+.contact-option-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.contact-option-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.contact-option--secondary {
+  margin-bottom: 0.85rem;
+}
+
+.contact-sheet-close {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.65rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+}
+
+@keyframes contact-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes contact-sheet-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes contact-pop-in {
+  from {
+    transform: translateY(8px) scale(0.96);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-backdrop,
+  .contact-sheet {
+    animation: none;
+  }
+}
