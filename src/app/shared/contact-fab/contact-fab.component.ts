@@ -2,7 +2,7 @@ import { Component, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { SiteLinksService } from '../../core/services/site-links.service';
 
 @Component({
   selector: 'app-contact-fab',
@@ -15,17 +15,14 @@ export class ContactFabComponent implements OnDestroy {
   /** Abre el panel de opciones */
   open = false;
 
-  readonly dudasUrl = (environment.whatsappDudasUrl || '').trim();
-  readonly comunidadUrl = (environment.whatsappComunidadUrl || '').trim();
-
-  /** Sin URLs no se muestra el FAB */
-  readonly showFab = !!(this.dudasUrl || this.comunidadUrl);
-
   hideOnAdmin = false;
 
   private readonly sub: Subscription;
 
-  constructor(private readonly router: Router) {
+  constructor(
+    readonly siteLinks: SiteLinksService,
+    private readonly router: Router
+  ) {
     this.hideOnAdmin = this.router.url.startsWith('/admin');
     this.sub = this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)).subscribe(() => {
       this.hideOnAdmin = this.router.url.startsWith('/admin');

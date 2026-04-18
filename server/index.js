@@ -809,19 +809,31 @@ app.post('/api/admin/revisar-beneficios', async (req, res) => {
   }
 });
 
-// ----- CONFIG (público: precio stiker para la tienda) -----
+// ----- CONFIG (público: precio stiker + enlaces de contacto / redes desde .env) -----
+
+function publicLinksFromEnv() {
+  return {
+    whatsappDudasUrl: (process.env.PUBLIC_WHATSAPP_DUDAS_URL || '').trim(),
+    whatsappComunidadUrl: (process.env.PUBLIC_WHATSAPP_COMUNIDAD_URL || '').trim(),
+    socialFacebookUrl: (process.env.PUBLIC_SOCIAL_FACEBOOK_URL || '').trim(),
+    socialInstagramUrl: (process.env.PUBLIC_SOCIAL_INSTAGRAM_URL || '').trim(),
+    socialTiktokUrl: (process.env.PUBLIC_SOCIAL_TIKTOK_URL || '').trim()
+  };
+}
 
 app.get('/api/config', async (req, res) => {
+  const links = publicLinksFromEnv();
   try {
     const precio = await db.prepare("SELECT value FROM config WHERE key = 'precio_stiker_cents'").get();
     const currency = await db.prepare("SELECT value FROM config WHERE key = 'currency'").get();
     res.json({
       precioStikerCents: precio ? parseInt(precio.value, 10) : 5000,
-      currency: currency ? currency.value : 'cop'
+      currency: currency ? currency.value : 'cop',
+      ...links
     });
   } catch (err) {
     console.error('Error GET /api/config:', err);
-    res.json({ precioStikerCents: 5000, currency: 'cop' });
+    res.json({ precioStikerCents: 5000, currency: 'cop', ...links });
   }
 });
 

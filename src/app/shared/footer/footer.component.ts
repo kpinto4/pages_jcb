@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { environment } from '../../../environments/environment';
+import { SiteLinksService } from '../../core/services/site-links.service';
 
 @Component({
   selector: 'app-footer',
@@ -13,11 +13,5 @@ import { environment } from '../../../environments/environment';
 export class FooterComponent {
   year = new Date().getFullYear();
 
-  readonly socialFacebookUrl = (environment.socialFacebookUrl || '').trim();
-  readonly socialInstagramUrl = (environment.socialInstagramUrl || '').trim();
-  readonly socialTiktokUrl = (environment.socialTiktokUrl || '').trim();
-
-  get hasSocialLinks(): boolean {
-    return !!(this.socialFacebookUrl || this.socialInstagramUrl || this.socialTiktokUrl);
-  }
+  constructor(readonly siteLinks: SiteLinksService) {}
 }

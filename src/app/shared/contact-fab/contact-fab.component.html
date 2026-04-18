@@ -1,4 +1,5 @@
-<div class="contact-root" *ngIf="showFab && !hideOnAdmin">
+<ng-container *ngIf="siteLinks.links$ | async as links">
+<div class="contact-root" *ngIf="!hideOnAdmin && (links.whatsappDudasUrl || links.whatsappComunidadUrl)">
   <button
     type="button"
     class="contact-fab"
@@ -35,9 +36,9 @@
     <p class="contact-sheet-sub">Elige cómo quieres escribirnos por WhatsApp.</p>
 
     <a
-      *ngIf="dudasUrl"
+      *ngIf="links.whatsappDudasUrl"
       class="contact-option"
-      [href]="dudasUrl"
+      [href]="links.whatsappDudasUrl"
       target="_blank"
       rel="noopener noreferrer"
       (click)="close()"
@@ -47,9 +48,9 @@
     </a>
 
     <a
-      *ngIf="comunidadUrl"
+      *ngIf="links.whatsappComunidadUrl"
       class="contact-option contact-option--secondary"
-      [href]="comunidadUrl"
+      [href]="links.whatsappComunidadUrl"
       target="_blank"
       rel="noopener noreferrer"
       (click)="close()"
@@ -63,3 +64,4 @@
     </button>
   </div>
 </div>
+</ng-container>
