@@ -77,6 +77,38 @@ if (db && process.env.DATABASE_URL) {
 }
 /** Órdenes `pending` sin pago: liberar stikers tras este tiempo (min). Rango 5–30; por defecto 30. */
 const pendingOrderExpireMinutes = Math.min(30, Math.max(5, Number.parseInt(process.env.PENDING_ORDER_EXPIRE_MINUTES ?? '30', 10) || 30));
+/** Máximo de stikers por compra (evita saturación). Rango 1–100; por defecto 50. */
+const maxStickersPerOrder = Math.min(100, Math.max(1, Number.parseInt(process.env.MAX_STICKERS_PER_ORDER ?? '50', 10) || 50));
+
+/** Fecha calendario en Colombia (YYYY-MM-DD) para sorteos activos. */
+function fechaHoyColombia() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+/** Rate limit en memoria por clave (IP + ruta). */
+function createRateLimiter({ windowMs, max, keyPrefix }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const key = `${keyPrefix}:${ip}`;
+    const now = Date.now();
+    let bucket = hits.get(key);
+    if (!bucket || now - bucket.start > windowMs) {
+      bucket = { start: now, count: 0 };
+      hits.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      return res.status(429).json({
+        error: 'Demasiados intentos. Espera un momento e inténtalo de nuevo.'
+      });
+    }
+    next();
+  };
+}
+
+const loginRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'login' });
+const verificarRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 40, keyPrefix: 'verificar' });
 /** Intervalo de la tarea de limpieza: a lo sumo la mitad del tiempo de expiración, entre 5 y 15 min. */
 const pendingCleanupIntervalMs = Math.max(
   5 * 60 * 1000,
@@ -188,7 +220,7 @@ app.get('/api/health', (req, res) => {
 
 // ----- ADMIN LOGIN (público, antes del middleware) -----
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', loginRateLimit, (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const password = (typeof body.password === 'string' ? body.password : String(body.password || '')).trim();
@@ -328,7 +360,7 @@ async function hayPremioMayorActivo() {
 
 /** Devuelve el id del premio mayor activo o null. Los stikers de cada campaña se asocian a este sorteo. */
 async function getPremioMayorActivoId() {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = fechaHoyColombia();
   const row = await db.prepare(`
     SELECT id FROM sorteos
     WHERE tipo = 'mayor' AND estado = 'programado'
@@ -336,6 +368,185 @@ async function getPremioMayorActivoId() {
     LIMIT 1
   `).get(hoy, hoy);
   return row ? row.id : null;
+}
+
+/** Precio por stiker en centavos (desde config). */
+async function getPrecioStikerCents() {
+  const precio = await db.prepare("SELECT value FROM config WHERE key = 'precio_stiker_cents'").get();
+  const n = precio ? parseInt(precio.value, 10) : 5000;
+  return Number.isFinite(n) && n > 0 ? n : 5000;
+}
+
+/** % de stikers vendidos (solo órdenes pagadas). */
+async function getPctStikersVendidos() {
+  const totalStikersSoldRow = await db.prepare(`
+    SELECT COUNT(*) as n
+    FROM stiker_slots ss
+    JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
+  `).get();
+  const totalStikersRow = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
+  const totalSold = Number(totalStikersSoldRow?.n ?? 0);
+  const totalSlots = Number(totalStikersRow?.n ?? 0);
+  if (totalSlots <= 0) return 0;
+  return (totalSold / totalSlots) * 100;
+}
+
+/**
+ * Umbrales % vendido (10 filas en admin: 10%, 20%, …).
+ * Cada umbral cumplido suma 1 cupo de premio anticipado en la campaña (máx. 10).
+ */
+async function getAnticipadosPercentThresholds() {
+  const cfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipados_percent'").get();
+  if (cfg?.value) {
+    const raw = cfg.value.split(',').map((p) => parseInt(String(p).trim(), 10));
+    const arr = raw
+      .filter((n) => !isNaN(n) && n > 0 && n <= 100)
+      .slice(0, 10);
+    while (arr.length < 10) arr.push(100);
+    return arr;
+  }
+  const stepCfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipado_step_percent'").get();
+  const step = stepCfg ? Math.round(Number(stepCfg.value)) : null;
+  if (step && Number.isFinite(step) && step > 0) {
+    return Array.from({ length: 10 }, (_, i) => Math.min(100, step * (i + 1)));
+  }
+  return Array.from({ length: 10 }, () => 100);
+}
+
+/**
+ * Cupos de premios anticipados según % vendido.
+ * Ej. umbrales [10,20,30…]: al 15% hay 1 cupo; al 25% hay 2. Cualquiera de los 10 anticipados
+ * puede ganar si el cliente compra su número bendecido (no hace falta ir en orden 1→2→3).
+ */
+function maxCuposAnticipados(pctVendido, thresholds) {
+  return thresholds.filter((t) => pctVendido >= t).length;
+}
+
+/** Cuántos anticipados distintos ya tienen ganador en la campaña. */
+async function countBeneficiosAnticipadosCampana(sorteoMayorId) {
+  if (sorteoMayorId) {
+    const row = await db.prepare(`
+      SELECT COUNT(DISTINCT b.sorteo_id) AS n
+      FROM beneficios_anticipados b
+      JOIN sorteos s ON s.id = b.sorteo_id
+      WHERE s.tipo = 'anticipado' AND s.sorteo_mayor_id = ?
+    `).get(sorteoMayorId);
+    return Number(row?.n ?? 0);
+  }
+  const row = await db.prepare(`
+    SELECT COUNT(DISTINCT b.sorteo_id) AS n
+    FROM beneficios_anticipados b
+    JOIN sorteos s ON s.id = b.sorteo_id
+    WHERE s.tipo = 'anticipado'
+  `).get();
+  return Number(row?.n ?? 0);
+}
+
+/** Rechaza cantidad de stikers fuera del límite por compra. */
+function assertStickerCount(stickerCount) {
+  const qty = Math.max(0, Math.round(Number(stickerCount)));
+  if (qty === 0) {
+    return { ok: false, status: 400, error: 'Selecciona al menos un stiker.' };
+  }
+  if (qty > maxStickersPerOrder) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Máximo ${maxStickersPerOrder} stikers por compra. Reduce la selección e inténtalo de nuevo.`
+    };
+  }
+  return { ok: true, qty };
+}
+
+/** Rechaza montos que no coincidan con precio × cantidad (el cliente no puede manipular amount). */
+async function assertCheckoutAmount(amount, stickerCount) {
+  const countCheck = assertStickerCount(stickerCount);
+  if (!countCheck.ok) return countCheck;
+  const qty = countCheck.qty;
+  const unit = await getPrecioStikerCents();
+  const expected = unit * qty;
+  const received = Math.round(Number(amount));
+  if (received !== expected) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Monto incorrecto. Se esperaban ${expected} centavos (${qty} stiker(s) × ${unit}).`
+    };
+  }
+  return { ok: true, expected };
+}
+
+/** Error HTTP con código para rutas Express. */
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/** Quita números bendecidos de sorteos anticipados en respuestas públicas. */
+function sorteoPublico(row) {
+  if (!row || typeof row !== 'object') return row;
+  const out = { ...row };
+  if ((out.tipo || '').toLowerCase() === 'anticipado') {
+    delete out.numeros_beneficiados;
+  }
+  return out;
+}
+
+/**
+ * Reserva stikers dentro de una transacción (FOR UPDATE) e inserta orden + items.
+ * @param {'pending'|'paid'} orderStatus
+ */
+async function reservarStikersEnTransaccion(tx, {
+  orderId,
+  selectedStikers,
+  cedula,
+  nombre,
+  customerEmail,
+  telefono,
+  amount,
+  currency,
+  sorteoMayorId,
+  orderStatus
+}) {
+  if (!selectedStikers?.length) {
+    throw httpError(400, 'Selecciona al menos un stiker.');
+  }
+  const params = selectedStikers.flatMap((s) => [s.numeroA, s.numeroB]);
+  const placeholders = selectedStikers.map(() => '(?, ?)').join(', ');
+  const slots = await tx.prepare(`
+    SELECT id, numero_a, numero_b, order_id
+    FROM stiker_slots
+    WHERE (numero_a, numero_b) IN (${placeholders})
+    FOR UPDATE
+  `).all(...params);
+
+  if (slots.length !== selectedStikers.length) {
+    throw httpError(409, 'Algunos stikers ya no están disponibles. Actualiza la página y elige de nuevo.');
+  }
+  const ocupados = slots.filter((s) => s.order_id != null);
+  if (ocupados.length > 0) {
+    throw httpError(409, 'Algunos stikers ya no están disponibles. Actualiza la página y elige de nuevo.');
+  }
+
+  await tx.prepare(`
+    INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), orderStatus, sorteoMayorId);
+
+  const insertItem = tx.prepare(`
+    INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
+  `);
+  for (const s of selectedStikers) {
+    await insertItem.run(orderId, s.numeroA, s.numeroB);
+  }
+
+  const updateSlot = tx.prepare(`
+    UPDATE stiker_slots SET order_id = ? WHERE numero_a = ? AND numero_b = ? AND order_id IS NULL
+  `);
+  for (const s of selectedStikers) {
+    await updateSlot.run(orderId, s.numeroA, s.numeroB);
+  }
 }
 
 app.get('/api/stikers', async (req, res) => {
@@ -351,7 +562,11 @@ app.get('/api/stikers', async (req, res) => {
       SELECT ss.id,
              ss.numero_a AS "numeroA",
              ss.numero_b AS "numeroB",
-             CASE WHEN ss.order_id IS NOT NULL AND o.status = 'paid' THEN 'ocupado' ELSE 'libre' END AS estado
+             CASE
+               WHEN ss.order_id IS NOT NULL AND o.status = 'paid' THEN 'ocupado'
+               WHEN ss.order_id IS NOT NULL AND o.status = 'pending' THEN 'reservado'
+               ELSE 'libre'
+             END AS estado
       FROM stiker_slots ss
       LEFT JOIN orders o ON o.id = ss.order_id
       ORDER BY ss.id
@@ -367,7 +582,7 @@ app.get('/api/stikers', async (req, res) => {
 
 // ----- STIKERS POR CÉDULA (verificar compras) -----
 
-app.get('/api/verificar-stikers', async (req, res) => {
+app.get('/api/verificar-stikers', verificarRateLimit, async (req, res) => {
   try {
     const cedula = (req.query.cedula || '').trim();
     if (!cedula) {
@@ -377,7 +592,7 @@ app.get('/api/verificar-stikers', async (req, res) => {
     const orders = await db.prepare(`
       SELECT id, stripe_session_id, status, total_cents, created_at
       FROM orders
-      WHERE cedula = ?
+      WHERE cedula = ? AND status = 'paid'
       ORDER BY created_at DESC
     `).all(cedula);
 
@@ -391,7 +606,7 @@ app.get('/api/verificar-stikers', async (req, res) => {
           codigo: `STK-${order.id.slice(0, 8).toUpperCase()}`,
           numero1: item.numero_a,
           numero2: item.numero_b,
-          pagado: order.status === 'paid'
+          pagado: true
         });
       }
     }
@@ -431,6 +646,11 @@ app.post('/api/create-checkout-session', async (req, res) => {
       });
     }
 
+    const amountCheck = await assertCheckoutAmount(amount, selectedStikers.length);
+    if (!amountCheck.ok) {
+      return res.status(amountCheck.status).json({ error: amountCheck.error });
+    }
+
     if (!wompiEnabled) {
       const hintSandbox =
         'Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET). Para pruebas sin cobro real usa llaves de sandbox (pub_test_*).';
@@ -448,41 +668,20 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const telefono = (metadata.telefono || '').trim();
 
     if (selectedStikers.length > 0) {
-      const params = selectedStikers.flatMap(s => [s.numeroA, s.numeroB]);
-      const placeholders = selectedStikers.map(() => '(?, ?)').join(', ');
-      const slots = await db.prepare(`
-        SELECT id, numero_a, numero_b, order_id
-        FROM stiker_slots
-        WHERE (numero_a, numero_b) IN (${placeholders})
-      `).all(...params);
-
-      const ocupados = slots.filter(s => s.order_id != null);
-      if (ocupados.length > 0) {
-        return res.status(409).json({
-          error: 'Algunos stikers ya no están disponibles. Actualiza la página y elige de nuevo.'
-        });
-      }
-
       const sorteoMayorId = await getPremioMayorActivoId();
       const runTx = db.transaction(async (tx) => {
-        await tx.prepare(`
-          INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-        `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), sorteoMayorId);
-
-        const insertItem = tx.prepare(`
-          INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
-        `);
-        for (const s of selectedStikers) {
-          await insertItem.run(orderId, s.numeroA, s.numeroB);
-        }
-
-        const updateSlot = tx.prepare(`
-          UPDATE stiker_slots SET order_id = ? WHERE numero_a = ? AND numero_b = ?
-        `);
-        for (const s of selectedStikers) {
-          await updateSlot.run(orderId, s.numeroA, s.numeroB);
-        }
+        await reservarStikersEnTransaccion(tx, {
+          orderId,
+          selectedStikers,
+          cedula,
+          nombre,
+          customerEmail,
+          telefono,
+          amount,
+          currency,
+          sorteoMayorId,
+          orderStatus: 'pending'
+        });
       });
       await runTx();
     } else {
@@ -520,6 +719,9 @@ app.post('/api/create-checkout-session', async (req, res) => {
     return res.json({ provider: 'wompi', checkoutUrl, sessionId: orderId });
   } catch (err) {
     console.error('Error creando sesión de pago:', err);
+    if (err.status === 409 || err.status === 400) {
+      return res.status(err.status).json({ error: err.message });
+    }
     res.status(500).json({
       error: err.message || 'Error al crear la sesión de pago'
     });
@@ -557,46 +759,30 @@ app.post('/api/simulate-payment', async (req, res) => {
       });
     }
 
+    const amountCheck = await assertCheckoutAmount(amount, selectedStikers.length);
+    if (!amountCheck.ok) {
+      return res.status(amountCheck.status).json({ error: amountCheck.error });
+    }
+
     const orderId = randomUUID();
     const cedula = (metadata.cedula || '').trim();
     const nombre = (customerName || '').trim() || 'Cliente';
     const telefono = (metadata.telefono || '').trim();
 
-    const params = selectedStikers.flatMap(s => [s.numeroA, s.numeroB]);
-    const placeholders = selectedStikers.map(() => '(?, ?)').join(', ');
-    const slots = await db.prepare(`
-      SELECT id, numero_a, numero_b, order_id
-      FROM stiker_slots
-      WHERE (numero_a, numero_b) IN (${placeholders})
-    `).all(...params);
-
-    const ocupados = slots.filter(s => s.order_id != null);
-    if (ocupados.length > 0) {
-      return res.status(409).json({
-        error: 'Algunos stikers ya no están disponibles. Actualiza la página y elige de nuevo.'
-      });
-    }
-
     const sorteoMayorId = await getPremioMayorActivoId();
     const runTx = db.transaction(async (tx) => {
-      await tx.prepare(`
-        INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'paid', ?)
-      `).run(orderId, cedula, nombre, customerEmail, telefono, Math.round(Number(amount)), (currency || 'cop').toLowerCase(), sorteoMayorId);
-
-      const insertItem = tx.prepare(`
-        INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
-      `);
-      for (const s of selectedStikers) {
-        await insertItem.run(orderId, s.numeroA, s.numeroB);
-      }
-
-      const updateSlot = tx.prepare(`
-        UPDATE stiker_slots SET order_id = ? WHERE numero_a = ? AND numero_b = ?
-      `);
-      for (const s of selectedStikers) {
-        await updateSlot.run(orderId, s.numeroA, s.numeroB);
-      }
+      await reservarStikersEnTransaccion(tx, {
+        orderId,
+        selectedStikers,
+        cedula,
+        nombre,
+        customerEmail,
+        telefono,
+        amount: Math.round(Number(amount)),
+        currency: currency || 'cop',
+        sorteoMayorId,
+        orderStatus: 'paid'
+      });
     });
     await runTx();
     await registrarBeneficiosAnticipados(orderId);
@@ -605,6 +791,9 @@ app.post('/api/simulate-payment', async (req, res) => {
     res.json({ sessionId: orderId, ok: true });
   } catch (err) {
     console.error('Error simulate-payment:', err);
+    if (err.status === 409 || err.status === 400) {
+      return res.status(err.status).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message || 'Error al simular el pago' });
   }
 });
@@ -690,8 +879,14 @@ app.post('/api/webhooks/wompi', async (req, res) => {
   }
 
   try {
-    const order = await db.prepare('SELECT id, status FROM orders WHERE id = ?').get(reference);
+    const order = await db.prepare('SELECT id, status, total_cents FROM orders WHERE id = ?').get(reference);
     if (!order || order.status === 'paid') return res.sendStatus(200);
+    const wompiAmount = Math.round(Number(transaction.amount_in_cents));
+    const orderAmount = Math.round(Number(order.total_cents));
+    if (Number.isFinite(wompiAmount) && wompiAmount > 0 && wompiAmount !== orderAmount) {
+      console.warn('Webhook Wompi: monto no coincide', reference, 'wompi=', wompiAmount, 'orden=', orderAmount);
+      return res.status(400).send('Amount mismatch');
+    }
     await db.prepare(`UPDATE orders SET status = 'paid', payment_reference = ?, stripe_session_id = ? WHERE id = ?`).run(transaction.id, transaction.id, reference);
     await registrarBeneficiosAnticipados(reference);
     console.log('Wompi: orden marcada como pagada:', reference);
@@ -754,18 +949,78 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const totalOrders = await db.prepare("SELECT COUNT(*) as n FROM orders WHERE status = 'paid'").get();
+    const pendingOrders = await db.prepare("SELECT COUNT(*) as n FROM orders WHERE status = 'pending'").get();
     const totalStikersSold = await db.prepare(`
       SELECT COUNT(*) as n
       FROM stiker_slots ss
       JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
     `).get();
+    const reservedStikers = await db.prepare(`
+      SELECT COUNT(*) as n
+      FROM stiker_slots ss
+      JOIN orders o ON o.id = ss.order_id AND o.status = 'pending'
+    `).get();
     const totalStikers = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
     const totalRevenue = await db.prepare("SELECT COALESCE(SUM(total_cents), 0) as n FROM orders WHERE status = 'paid'").get();
+    const beneficiosCount = await db.prepare('SELECT COUNT(*) as n FROM beneficios_anticipados').get();
+    const avgOrder = await db.prepare(`
+      SELECT COALESCE(AVG(total_cents), 0) as n FROM orders WHERE status = 'paid'
+    `).get();
+    const hoy = fechaHoyColombia();
+    const ordersToday = await db.prepare(`
+      SELECT COUNT(*) as n FROM orders
+      WHERE status = 'paid' AND (created_at::date) = (?::date)
+    `).get(hoy);
+    const revenueToday = await db.prepare(`
+      SELECT COALESCE(SUM(total_cents), 0) as n FROM orders
+      WHERE status = 'paid' AND (created_at::date) = (?::date)
+    `).get(hoy);
+    const mayorActivo = await db.prepare(`
+      SELECT id, nombre, fecha, premio_descripcion, estado
+      FROM sorteos
+      WHERE tipo = 'mayor' AND estado = 'programado'
+      AND ((fecha::date) = (?::date) OR (fecha::date) > (?::date))
+      ORDER BY fecha ASC
+      LIMIT 1
+    `).get(hoy, hoy);
+    const anticipadosActivos = mayorActivo
+      ? await db.prepare(`
+          SELECT COUNT(*) as n FROM sorteos
+          WHERE tipo = 'anticipado' AND estado = 'programado' AND sorteo_mayor_id = ?
+        `).get(mayorActivo.id)
+      : { n: 0 };
+    const beneficiosHoy = await db.prepare(`
+      SELECT COUNT(*) as n FROM beneficios_anticipados
+      WHERE (created_at::date) = (?::date)
+    `).get(hoy);
+
+    const sold = Number(totalStikersSold?.n ?? 0);
+    const total = Number(totalStikers?.n ?? 0);
+    const pctSold = total > 0 ? Math.round((sold / total) * 10000) / 100 : 0;
+
     res.json(toJSONSafe({
       totalOrders: Number(totalOrders?.n ?? 0),
-      totalStikersSold: Number(totalStikersSold?.n ?? 0),
-      totalStikers: Number(totalStikers?.n ?? 0),
-      totalRevenueCents: Number(totalRevenue?.n ?? 0)
+      pendingOrders: Number(pendingOrders?.n ?? 0),
+      totalStikersSold: sold,
+      reservedStikers: Number(reservedStikers?.n ?? 0),
+      totalStikers: total,
+      pctSold,
+      totalRevenueCents: Number(totalRevenue?.n ?? 0),
+      avgOrderCents: Math.round(Number(avgOrder?.n ?? 0)),
+      ordersToday: Number(ordersToday?.n ?? 0),
+      revenueTodayCents: Number(revenueToday?.n ?? 0),
+      beneficiosCount: Number(beneficiosCount?.n ?? 0),
+      beneficiosHoy: Number(beneficiosHoy?.n ?? 0),
+      anticipadosActivos: Number(anticipadosActivos?.n ?? 0),
+      campana: mayorActivo
+        ? {
+            id: mayorActivo.id,
+            nombre: mayorActivo.nombre,
+            fecha: mayorActivo.fecha,
+            premio_descripcion: mayorActivo.premio_descripcion,
+            estado: mayorActivo.estado
+          }
+        : null
     }));
   } catch (err) {
     console.error('Error GET /api/admin/stats:', err);
@@ -829,11 +1084,19 @@ app.get('/api/config', async (req, res) => {
     res.json({
       precioStikerCents: precio ? parseInt(precio.value, 10) : 5000,
       currency: currency ? currency.value : 'cop',
+      maxStickersPerOrder,
+      pendingOrderExpireMinutes,
       ...links
     });
   } catch (err) {
     console.error('Error GET /api/config:', err);
-    res.json({ precioStikerCents: 5000, currency: 'cop', ...links });
+    res.json({
+      precioStikerCents: 5000,
+      currency: 'cop',
+      maxStickersPerOrder,
+      pendingOrderExpireMinutes,
+      ...links
+    });
   }
 });
 
@@ -853,7 +1116,7 @@ app.get('/api/admin/config', async (req, res) => {
 
 app.patch('/api/admin/config', async (req, res) => {
   try {
-    const { precioStikerCents, currency, anticipadoStepPercent } = req.body;
+    const { precioStikerCents, currency, anticipadoStepPercent, anticipadosPercent } = req.body;
     if (precioStikerCents !== undefined) {
       const cents = Math.round(Number(precioStikerCents));
       if (cents < 0) return res.status(400).json({ error: 'Precio debe ser >= 0' });
@@ -862,6 +1125,20 @@ app.patch('/api/admin/config', async (req, res) => {
     if (currency !== undefined && typeof currency === 'string') {
       const val = currency.trim().toLowerCase();
       await db.prepare("INSERT INTO config (key, value) VALUES ('currency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(val);
+    }
+    if (anticipadosPercent !== undefined) {
+      const raw = typeof anticipadosPercent === 'string'
+        ? anticipadosPercent.trim()
+        : Array.isArray(anticipadosPercent)
+          ? anticipadosPercent.join(',')
+          : String(anticipadosPercent ?? '');
+      const parts = raw.split(',').map((p) => parseInt(String(p).trim(), 10));
+      if (parts.length === 0 || parts.some((n) => isNaN(n) || n <= 0 || n > 100)) {
+        return res.status(400).json({ error: 'Cada porcentaje de anticipado debe estar entre 1 y 100.' });
+      }
+      const normalized = parts.slice(0, 10);
+      while (normalized.length < 10) normalized.push(100);
+      await db.prepare("INSERT INTO config (key, value) VALUES ('anticipados_percent', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(normalized.join(','));
     }
     if (anticipadoStepPercent !== undefined) {
       const step = Math.round(Number(anticipadoStepPercent));
@@ -894,7 +1171,7 @@ app.get('/api/sorteos', async (req, res) => {
       params.push(estado);
     }
     const rows = await db.prepare(sql).all(...params);
-    res.json(toJSONSafe({ sorteos: rows }));
+    res.json(toJSONSafe({ sorteos: rows.map(sorteoPublico) }));
   } catch (err) {
     console.error('Error GET /api/sorteos:', err);
     res.status(500).json({ error: err.message });
@@ -903,7 +1180,7 @@ app.get('/api/sorteos', async (req, res) => {
 
 app.get('/api/sorteos/home', async (req, res) => {
   try {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = fechaHoyColombia();
 
     const principal = await db.prepare(`
       SELECT ${sorteosSelect}
@@ -917,7 +1194,7 @@ app.get('/api/sorteos/home', async (req, res) => {
     let anticipadosActuales = [];
     if (principal) {
       const rows = await db.prepare(`
-        SELECT s.id, s.nombre, s.fecha, s.premio_descripcion, s.numeros_beneficiados
+        SELECT s.id, s.nombre, s.fecha, s.premio_descripcion
         FROM sorteos s
         WHERE s.sorteo_mayor_id = ? AND s.estado = 'programado'
         ORDER BY s.id ASC
@@ -937,7 +1214,10 @@ app.get('/api/sorteos/home', async (req, res) => {
       anticipadosActuales = rows.map(row => {
         const benef = beneficiosMap[row.id];
         return {
-          ...row,
+          id: row.id,
+          nombre: row.nombre,
+          fecha: row.fecha,
+          premio_descripcion: row.premio_descripcion,
           revelado: !!benef,
           numero_revelado: benef ? `${benef.numero_a}-${benef.numero_b}` : null
         };
@@ -953,9 +1233,9 @@ app.get('/api/sorteos/home', async (req, res) => {
     `).all();
 
     res.json(toJSONSafe({
-      principal: principal || null,
+      principal: principal ? sorteoPublico(principal) : null,
       anticipadosActuales,
-      mayoresRealizados
+      mayoresRealizados: mayoresRealizados.map(sorteoPublico)
     }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);
@@ -967,7 +1247,7 @@ app.get('/api/sorteos/:id', async (req, res) => {
   try {
     const row = await db.prepare(`SELECT ${sorteosSelect} FROM sorteos WHERE id = ?`).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Sorteo no encontrado' });
-    res.json(toJSONSafe(row));
+    res.json(toJSONSafe(sorteoPublico(row)));
   } catch (err) {
     console.error('Error GET /api/sorteos/:id:', err);
     res.status(500).json({ error: err.message });
@@ -1027,31 +1307,19 @@ async function registrarBeneficiosAnticipados(orderId) {
     ? await db.prepare(baseQuery + ' AND sorteo_mayor_id = ? ORDER BY id ASC').all(order.sorteo_mayor_id)
     : await db.prepare(baseQuery + ' ORDER BY id ASC').all();
 
-  // Config global: porcentaje de stikers vendidos necesario para ir liberando anticipados
-  let sorteosBenef = sorteosBenefAll;
+  let slotsRestantes = 10;
   try {
-    const cfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipado_step_percent'").get();
-    const step = cfg ? Math.round(Number(cfg.value)) : null;
-    if (step && Number.isFinite(step) && step > 0) {
-      const totalStikersSoldRow = await db.prepare(`
-        SELECT COUNT(*) as n
-        FROM stiker_slots ss
-        JOIN orders o ON o.id = ss.order_id AND o.status = 'paid'
-      `).get();
-      const totalStikersRow = await db.prepare('SELECT COUNT(*) as n FROM stiker_slots').get();
-      const totalSold = Number(totalStikersSoldRow?.n ?? 0);
-      const totalSlots = Number(totalStikersRow?.n ?? 0);
-      if (totalSlots > 0) {
-        const pct = (totalSold / totalSlots) * 100;
-        const permitidos = Math.max(0, Math.min(sorteosBenefAll.length, Math.floor(pct / step)));
-        sorteosBenef = sorteosBenefAll.slice(0, permitidos);
-      } else {
-        sorteosBenef = [];
-      }
-    }
+    const pctVendido = await getPctStikersVendidos();
+    const thresholds = await getAnticipadosPercentThresholds();
+    const maxCupos = maxCuposAnticipados(pctVendido, thresholds);
+    const yaEntregados = await countBeneficiosAnticipadosCampana(order.sorteo_mayor_id);
+    slotsRestantes = Math.max(0, maxCupos - yaEntregados);
   } catch (e) {
-    console.warn('Config anticipado_step_percent:', e?.message || e);
+    console.warn('Config anticipados_percent:', e?.message || e);
   }
+  if (slotsRestantes <= 0) return;
+
+  const sorteosBenef = sorteosBenefAll;
 
   const insertBenef = db.prepare(`
     INSERT INTO beneficios_anticipados (sorteo_id, order_id, numero_a, numero_b, cedula, nombre, email, telefono)
@@ -1060,6 +1328,9 @@ async function registrarBeneficiosAnticipados(orderId) {
   const existsBenefEnSorteo = db.prepare(`
     SELECT 1 FROM beneficios_anticipados
     WHERE sorteo_id = ? AND (TRIM(CAST(numero_a AS TEXT)) = ? AND TRIM(CAST(numero_b AS TEXT)) = ?) LIMIT 1
+  `);
+  const sorteoYaTieneGanador = db.prepare(`
+    SELECT 1 FROM beneficios_anticipados WHERE sorteo_id = ? LIMIT 1
   `);
   // Un stiker solo puede ganar un anticipado: si ya ganó algún bendecido de esta campaña, no se asigna a otro
   const stickerYaGanoAnticipadoEnCampanha = order.sorteo_mayor_id
@@ -1100,18 +1371,33 @@ async function registrarBeneficiosAnticipados(orderId) {
     if (set.size === 0 && numerosSueltos.size === 0) continue;
     for (const s of selectedKeys) {
       const matchPar = set.has(s.key) || set.has(s.keyReverse);
+      // Número bendecido de 4 cifras: coincide si está en numeroA o numeroB del par comprado.
       const matchNumero = numerosSueltos.has(s.numeroA) || numerosSueltos.has(s.numeroB);
       const matches = matchPar || matchNumero;
       const yaEnEsteSorteo = await existsBenefEnSorteo.get(srt.id, s.numeroA, s.numeroB);
+      const anticipadoYaPremiado = await sorteoYaTieneGanador.get(srt.id);
       const yaGanoOtroAnticipado = order.sorteo_mayor_id
         ? await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB, order.sorteo_mayor_id)
         : await stickerYaGanoAnticipadoEnCampanha.get(orderId, s.numeroA, s.numeroB);
-      if (matches && !yaEnEsteSorteo && !yaGanoOtroAnticipado) {
+      if (matches && !yaEnEsteSorteo && !anticipadoYaPremiado && !yaGanoOtroAnticipado && slotsRestantes > 0) {
         await insertBenef.run(srt.id, orderId, s.numeroA, s.numeroB, order.cedula || null, order.nombre || null, order.email || null, order.telefono || null);
+        slotsRestantes -= 1;
       }
     }
   }
 }
+
+// ----- ADMIN: listado completo de sorteos (incluye números bendecidos) -----
+
+app.get('/api/admin/sorteos', async (req, res) => {
+  try {
+    const rows = await db.prepare(`SELECT ${sorteosSelect} FROM sorteos ORDER BY fecha ASC`).all();
+    res.json(toJSONSafe({ sorteos: rows }));
+  } catch (err) {
+    console.error('Error GET /api/admin/sorteos:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/admin/sorteos', async (req, res) => {
   try {
@@ -1121,6 +1407,15 @@ app.post('/api/admin/sorteos', async (req, res) => {
     }
     if (tipo === 'mayor' && !(imagen_url && String(imagen_url).trim())) {
       return res.status(400).json({ error: 'Para Premio Mayor es obligatoria la URL de la imagen del premio (para el hero).' });
+    }
+
+    if ((tipo || '').toLowerCase() === 'mayor') {
+      const paidCount = await db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'paid'").get();
+      if (Number(paidCount?.n || 0) > 0) {
+        return res.status(400).json({
+          error: 'Hay ventas pagadas en la campaña actual. Realiza el Premio Mayor antes de crear uno nuevo; crear otro borraría todas las ventas.'
+        });
+      }
     }
 
     const runTx = db.transaction(async (tx) => {

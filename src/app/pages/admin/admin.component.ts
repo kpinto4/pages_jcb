@@ -20,6 +20,63 @@ export class AdminComponent implements OnInit, OnDestroy {
   loginLoading = false;
 
   tab: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'config' = 'stats';
+  mobileNavOpen = false;
+
+  get tabTitle(): string {
+    const titles: Record<typeof this.tab, string> = {
+      stats: 'Resumen',
+      orders: 'Ventas',
+      sorteos: 'Sorteos',
+      beneficios: 'Números bendecidos',
+      config: 'Configuración'
+    };
+    return titles[this.tab];
+  }
+
+  get tabSubtitle(): string {
+    const subs: Record<typeof this.tab, string> = {
+      stats: 'Vista general de ventas, campaña y actividad reciente.',
+      orders: 'Órdenes pagadas y pendientes de confirmación.',
+      sorteos: 'Crear, editar y realizar premios mayores y anticipados.',
+      beneficios: 'Ganadores de anticipados listos para contactar.',
+      config: 'Precio, cupos de anticipados y mantenimiento.'
+    };
+    return subs[this.tab];
+  }
+
+  get pctSold(): number {
+    return this.stats?.pctSold ?? (
+      this.stats && this.stats.totalStikers > 0
+        ? Math.round((this.stats.totalStikersSold / this.stats.totalStikers) * 10000) / 100
+        : 0
+    );
+  }
+
+  get stikersLibres(): number {
+    if (!this.stats) return 0;
+    return Math.max(0, this.stats.totalStikers - this.stats.totalStikersSold - (this.stats.reservedStikers ?? 0));
+  }
+
+  get ordenesPendientesLista(): AdminOrder[] {
+    return this.orders.filter((o) => o.status !== 'paid').slice(0, 5);
+  }
+
+  get ventasRecientes(): AdminOrder[] {
+    return this.orders.filter((o) => o.status === 'paid').slice(0, 6);
+  }
+
+  get beneficiosRecientes(): BeneficioAnticipado[] {
+    return this.beneficios.slice(0, 5);
+  }
+
+  get cuposAbiertos(): number {
+    const pct = this.pctSold;
+    return this.config.anticipadosPercent.filter((t) => pct >= t).length;
+  }
+
+  get premioMayorActivo(): Sorteo | null {
+    return this.sorteosActivos.find((s) => (s.tipo || '').toLowerCase() === 'mayor') ?? null;
+  }
 
   stats: AdminStats | null = null;
   orders: AdminOrder[] = [];
@@ -92,6 +149,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.cargarOrders();
       this.cargarSorteos();
       this.cargarConfig();
+      this.cargarBeneficios();
     }
   }
 
@@ -104,6 +162,13 @@ export class AdminComponent implements OnInit, OnDestroy {
   selectTab(t: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'config'): void {
     if (this.tab === 'beneficios' && t !== 'beneficios') this.stopBeneficiosPolling();
     this.tab = t;
+    this.mobileNavOpen = false;
+    if (t === 'stats') {
+      this.cargarStats();
+      this.cargarOrders();
+      this.cargarSorteos();
+      this.cargarBeneficios();
+    }
     if (t === 'beneficios') {
       this.cargarBeneficios();
       this.startBeneficiosPolling();
@@ -141,8 +206,8 @@ export class AdminComponent implements OnInit, OnDestroy {
           this.cargarOrders();
           this.cargarSorteos();
           this.cargarConfig();
+          this.cargarBeneficios();
           if (this.tab === 'beneficios') {
-            this.cargarBeneficios();
             this.startBeneficiosPolling();
           }
         }
@@ -240,6 +305,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       next: (updated) => {
         if (updated) {
           this.orders = this.orders.map(ord => ord.id === updated.id ? updated : ord);
+          this.cargarStats();
         }
         this.confirmandoId = null;
       },

@@ -1,6 +1,7 @@
 export const environment = {
   production: false,
-  paymentApiUrl: 'http://localhost:3015',
+  /** Vacío = en local usa proxy (ng serve → backend :3012). Pon URL completa solo si quieres apuntar a producción. */
+  paymentApiUrl: '',
   /** wa.me o api.whatsapp.com — vacío oculta la opción en el panel de contacto */
   whatsappDudasUrl: '',
   /** Enlace de invitación al grupo / comunidad */

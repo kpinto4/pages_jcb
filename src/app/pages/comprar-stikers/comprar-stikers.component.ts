@@ -11,7 +11,7 @@ import { environment } from '../../../environments/environment';
 interface Stiker {
   numeroA: string;
   numeroB: string;
-  estado: 'libre' | 'ocupado' | 'seleccionado';
+  estado: 'libre' | 'ocupado' | 'reservado' | 'seleccionado';
 }
 
 @Component({
@@ -26,6 +26,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   /** Solo en build de desarrollo; en producción las pruebas van por Wompi sandbox (pub_test_*) */
   readonly allowSimulatePayment = !environment.production;
 
+  /** Error al confirmar pago tras volver de Wompi (no mostrar éxito falso). */
+  errorConfirmacionPago = '';
+
   private readonly destroy$ = new Subject<void>();
   step = 1;
   procesandoPago = false;
@@ -34,6 +37,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
 
   /** Precio por stiker en centavos (desde backend; fallback 5000 = $50) */
   precioStikerCents = 5000;
+  /** Máximo de stikers por compra (desde backend). */
+  maxStickersPerOrder = 50;
   /** Moneda (cop, usd, etc.) */
   currency = 'cop';
   /** Precio por stiker en unidades (para mostrar): precioStikerCents / 100 */
@@ -84,6 +89,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       next: (c) => {
         this.precioStikerCents = c.precioStikerCents ?? 5000;
         this.currency = c.currency ?? 'usd';
+        this.maxStickersPerOrder = c.maxStickersPerOrder ?? 50;
       }
     });
 
@@ -99,7 +105,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
           this.stikers = res.stikers.map(s => ({
             numeroA: s.numeroA,
             numeroB: s.numeroB,
-            estado: s.estado as 'libre' | 'ocupado'
+            estado: s.estado as 'libre' | 'ocupado' | 'reservado'
           }));
         } else {
           this.stikers = [];
@@ -170,11 +176,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         this.procesandoPago = false;
         this.verificandoVueltaPago = false;
         this.pagoEnVerificacion = false;
-        this.successData = {
-          amountTotal: 0,
-          customerEmail: undefined,
-          stikersDetail: 'Pago completado. Recibirás la confirmación por correo.'
-        };
+        this.successData = null;
+        this.errorConfirmacionPago =
+          'No pudimos confirmar tu pago con el servidor. Si ya pagaste, usa Verificar Stiker con tu cédula en unos minutos.';
         this.step = 4;
         this.limpiarQueryParams();
       }
@@ -204,7 +208,12 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   }
 
   toggleStiker(stiker: Stiker): void {
-    if (stiker.estado === 'ocupado') return;
+    if (stiker.estado === 'ocupado' || stiker.estado === 'reservado') return;
+    if (stiker.estado !== 'seleccionado' && this.seleccionados.length >= this.maxStickersPerOrder) {
+      this.errorPago = `Máximo ${this.maxStickersPerOrder} stikers por compra.`;
+      return;
+    }
+    this.errorPago = '';
     stiker.estado =
       stiker.estado === 'seleccionado' ? 'libre' : 'seleccionado';
   }
@@ -281,9 +290,15 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   seleccionarAleatorios(): void {
     this.limpiarSeleccion();
     const libres = this.stikers.filter(s => s.estado === 'libre');
+    const cantidad = Math.min(
+      Math.max(1, Math.round(Number(this.cantidadAleatoria) || 1)),
+      this.maxStickersPerOrder,
+      libres.length
+    );
+    this.cantidadAleatoria = cantidad;
     libres
       .sort(() => 0.5 - Math.random())
-      .slice(0, this.cantidadAleatoria)
+      .slice(0, cantidad)
       .forEach(s => s.estado = 'seleccionado');
   }
 
@@ -302,9 +317,39 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     return this.seleccionados.length * this.precioStikerCents;
   }
 
+  private validarLimiteSeleccion(): boolean {
+    if (this.seleccionados.length > this.maxStickersPerOrder) {
+      this.errorPago = `Máximo ${this.maxStickersPerOrder} stikers por compra.`;
+      return false;
+    }
+    return true;
+  }
+
   nextStep(): void {
     this.errorPago = '';
     this.pagoCancelado = false;
+
+    if (this.step === 1 && !this.validarLimiteSeleccion()) {
+      return;
+    }
+
+    if (this.step === 2) {
+      const ced = this.cliente.cedula?.trim();
+      const email = this.cliente.email?.trim();
+      if (!ced) {
+        this.errorPago = 'El número de cédula es obligatorio para verificar tu compra.';
+        return;
+      }
+      if (!email) {
+        this.errorPago = 'El correo electrónico es obligatorio para el pago.';
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        this.errorPago = 'Ingresa un correo electrónico válido.';
+        return;
+      }
+    }
+
     this.step++;
   }
 
@@ -345,6 +390,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
 
     if (this.seleccionados.length === 0) {
       this.errorPago = 'No hay stikers seleccionados.';
+      return;
+    }
+    if (!this.validarLimiteSeleccion()) {
       return;
     }
 
@@ -397,6 +445,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     }
     if (!this.cliente.email?.trim()) {
       this.errorPago = 'El correo electrónico es obligatorio.';
+      return;
+    }
+    if (!this.validarLimiteSeleccion()) {
       return;
     }
 

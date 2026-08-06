@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, catchError, shareReplay } from 'rxjs';
-import { getApiUrl } from './api-url';
+import { getApiUrl, apiEndpoint } from './api-url';
 
 export interface Sorteo {
   id: number;
@@ -49,11 +49,14 @@ export class SorteosService {
   }
 
   private homeDataCache$: Observable<HomeSorteosResponse | null> | null = null;
+  private homeCacheExpiresAt = 0;
+  private readonly HOME_CACHE_MS = 60_000;
 
   getHomeData(): Observable<HomeSorteosResponse | null> {
-    if (!this.homeDataCache$) {
-      const base = this.apiUrl;
-      this.homeDataCache$ = this.http.get<HomeSorteosResponse>(`${base}/api/sorteos/home`).pipe(
+    const now = Date.now();
+    if (!this.homeDataCache$ || now > this.homeCacheExpiresAt) {
+      this.homeCacheExpiresAt = now + this.HOME_CACHE_MS;
+      this.homeDataCache$ = this.http.get<HomeSorteosResponse>(apiEndpoint('/api/sorteos/home')).pipe(
         catchError(() => of(null)),
         shareReplay({ bufferSize: 1, refCount: true })
       );
@@ -62,8 +65,7 @@ export class SorteosService {
   }
 
   getProgreso(): Observable<ProgresoResponse | null> {
-    const base = this.apiUrl;
-    return this.http.get<ProgresoResponse>(`${base}/api/progreso`).pipe(
+    return this.http.get<ProgresoResponse>(apiEndpoint('/api/progreso')).pipe(
       catchError(() => of(null))
     );
   }

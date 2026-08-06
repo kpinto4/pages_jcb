@@ -7,10 +7,13 @@
     },
     "scripts": {
       "ng": "ng",
-      "start": "ng serve",
+      "start": "node scripts/start.cjs",
+      "start:dev": "npm run dev",
       "build": "ng build --configuration production",
       "install-all": "npm install && npm install --prefix server",
+      "predev": "node -e \"const fs=require('fs');const p='server/.env';if(!fs.existsSync(p)){console.error('\\nFalta server/.env. Ejecuta: copy server\\\\.env.example server\\\\.env\\nLuego edita DATABASE_URL y ADMIN_PASSWORD.\\n');process.exit(1);}const t=fs.readFileSync(p,'utf8');if(!/DATABASE_URL=\\s*postgres/i.test(t)){console.error('\\nserver/.env: define DATABASE_URL (postgresql://...) para el backend local.\\n');process.exit(1);}\"",
       "dev": "concurrently -n front,back -c cyan,green \"ng serve\" \"npm run dev --prefix server\"",
+      "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke-dev.ps1",
       "prod": "npm run build && concurrently -n front,back -c cyan,green \"npx serve -s dist/pages_jcb/browser -l 3015\" \"npm run start:prod --prefix server\"",
       "watch": "ng build --watch --configuration development",
       "test": "ng test"

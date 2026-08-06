@@ -5,9 +5,25 @@ import { getApiUrl } from './api-url';
 
 export interface AdminStats {
   totalOrders: number;
+  pendingOrders?: number;
   totalStikersSold: number;
+  reservedStikers?: number;
   totalStikers: number;
+  pctSold?: number;
   totalRevenueCents: number;
+  avgOrderCents?: number;
+  ordersToday?: number;
+  revenueTodayCents?: number;
+  beneficiosCount?: number;
+  beneficiosHoy?: number;
+  anticipadosActivos?: number;
+  campana?: {
+    id: number;
+    nombre: string;
+    fecha: string;
+    premio_descripcion: string | null;
+    estado: string;
+  } | null;
 }
 
 export interface AdminOrder {
@@ -114,7 +130,7 @@ export class AdminService {
   }
 
   getSorteos(): Observable<{ sorteos: Sorteo[] } | null> {
-    return this.http.get<{ sorteos: Sorteo[] }>(`${this.base}/api/sorteos`).pipe(
+    return this.http.get<{ sorteos: Sorteo[] }>(`${this.base}/api/admin/sorteos`).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
     );
   }

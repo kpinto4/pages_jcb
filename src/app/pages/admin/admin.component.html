@@ -2,12 +2,15 @@
   <!-- LOGIN -->
   <section *ngIf="!loggedIn" class="login-section">
     <div class="login-card">
-      <h1>Acceso al panel</h1>
-      <p class="admin-desc">Introduce la contraseña de administrador.</p>
+      <p class="login-brand">Juego de la Ciudad Bonita</p>
+      <h1>Panel de administración</h1>
+      <p class="admin-desc">Introduce la contraseña para continuar.</p>
       <form (ngSubmit)="login()">
+        <label class="field-label" for="admin-password">Contraseña</label>
         <input
+          id="admin-password"
           type="password"
-          placeholder="Contraseña"
+          placeholder="••••••••"
           [(ngModel)]="password"
           name="password"
           autocomplete="current-password"
@@ -20,466 +23,737 @@
     </div>
   </section>
 
-  <!-- PANEL (solo si está logueado) -->
-  <ng-container *ngIf="loggedIn">
-  <div class="admin-header">
-    <div>
-      <h1>Panel de administración</h1>
-      <p class="admin-desc">Juego de la Ciudad Bonita — ventas, estadísticas y sorteos.</p>
-    </div>
-    <button type="button" class="btn-logout" (click)="logout()">Cerrar sesión</button>
-  </div>
-
-  <nav class="tabs">
-    <button type="button" class="tab" [class.active]="tab === 'stats'" (click)="selectTab('stats')">
-      Estadísticas
-    </button>
-    <button type="button" class="tab" [class.active]="tab === 'orders'" (click)="selectTab('orders')">
-      Ventas
-    </button>
-    <button type="button" class="tab" [class.active]="tab === 'sorteos'" (click)="selectTab('sorteos')">
-      Sorteos
-    </button>
-    <button type="button" class="tab" [class.active]="tab === 'beneficios'" (click)="selectTab('beneficios')">
-      Números beneficiados
-    </button>
-    <button type="button" class="tab" [class.active]="tab === 'config'" (click)="selectTab('config')">
-      Configuración
-    </button>
-  </nav>
-
-  <p class="error-msg" *ngIf="error">{{ error }}</p>
-
-  <!-- ESTADÍSTICAS -->
-  <section *ngIf="tab === 'stats'" class="panel">
-    <h2>Estadísticas</h2>
-    <div *ngIf="loading" class="loading">Cargando...</div>
-    <div *ngIf="!loading && stats" class="stats-grid">
-      <div class="stat-card">
-        <span class="stat-value">{{ stats.totalOrders }}</span>
-        <span class="stat-label">Órdenes pagadas</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ stats.totalStikersSold }} / {{ stats.totalStikers }}</span>
-        <span class="stat-label">Stikers vendidos / disponibles</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ formatCents(stats.totalRevenueCents) }}</span>
-        <span class="stat-label">Ingresos totales ({{ config.currency.toUpperCase() }})</span>
-      </div>
-    </div>
-    <p *ngIf="!loading && !stats" class="muted">No hay datos o el backend no está disponible.</p>
-  </section>
-
-  <!-- VENTAS -->
-  <section *ngIf="tab === 'orders'" class="panel">
-    <h2>Últimas ventas</h2>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Cédula</th>
-            <th>Nombre</th>
-            <th>Email</th>
-            <th>Stikers</th>
-            <th>Total</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let o of orders">
-            <td>{{ formatDate(o.created_at) }}</td>
-            <td>{{ o.cedula }}</td>
-            <td>{{ o.nombre }}</td>
-            <td>{{ o.email }}</td>
-            <td>{{ o.items_count }}</td>
-            <td>${{ formatCents(o.total_cents) }} {{ o.currency }}</td>
-            <td><span class="badge" [class.paid]="o.status === 'paid'">{{ o.status === 'paid' ? 'Pagado' : 'Pendiente' }}</span></td>
-            <td>
-              <button
-                *ngIf="o.status !== 'paid'"
-                type="button"
-                class="btn-realizar"
-                [disabled]="confirmandoId === o.id"
-                (click)="confirmarEfectivo(o)"
-              >
-                {{ confirmandoId === o.id ? 'Confirmando...' : 'Confirmar pago (efectivo)' }}
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p *ngIf="orders.length === 0" class="muted">No hay ventas registradas.</p>
-  </section>
-
-  <!-- SORTEOS -->
-  <section *ngIf="tab === 'sorteos'" class="panel">
-    <h2>Sorteos</h2>
-
-    <div class="sorteo-form">
-      <h3>Crear nuevo Premio Mayor</h3>
-      <p class="muted">Se creará el premio mayor y 10 anticipados de $500.000 COP (editables después).</p>
-      <div class="form-row">
-        <input type="text" placeholder="Nombre (ej. Premio Mayor 2026)" [(ngModel)]="nuevoSorteo.nombre">
-        <input type="date" [(ngModel)]="nuevoSorteo.fecha">
-      </div>
-      <div class="form-row">
-        <input type="text" placeholder="Premio (ej. Moto 0 KM, Bono $500.000 COP)" [(ngModel)]="nuevoSorteo.premio_descripcion">
-      </div>
-      <div class="form-row">
-        <label>Imagen del premio (para el hero)</label>
-        <p class="muted small">Recomendado: pega la <strong>URL de la imagen</strong> (Imgur, Supabase Storage, etc.). La subida de archivo en producción puede fallar.</p>
-        <div class="imagen-opciones">
-          <input type="url" placeholder="URL de la imagen" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
-          <span>o</span>
-          <input type="file" accept="image/*" (change)="onImagenFileChange($event)">
-          <span *ngIf="imagenFile" class="file-name">{{ imagenFile.name }}</span>
+  <!-- PANEL -->
+  <div class="admin-shell" *ngIf="loggedIn" [class.nav-open]="mobileNavOpen">
+    <aside class="admin-sidebar" aria-label="Navegación del panel">
+      <div class="sidebar-brand">
+        <span class="sidebar-brand-mark">JCB</span>
+        <div>
+          <strong>Admin</strong>
+          <small>Ciudad Bonita</small>
         </div>
       </div>
-      <div class="form-row">
-        <input type="text" placeholder="Descripción (opcional)" [(ngModel)]="nuevoSorteo.descripcion">
-      </div>
-      <button type="button" class="btn-primary" [disabled]="guardandoSorteo" (click)="crearSorteo()">
-        {{ guardandoSorteo ? 'Guardando...' : 'Crear sorteo' }}
-      </button>
-    </div>
 
-    <h3>Listado de sorteos</h3>
-
-    <!-- Sorteos activos (programados) primero -->
-    <h4 class="sorteos-section-title">Sorteos activos</h4>
-    <div class="sorteos-list">
-      <div *ngFor="let s of sorteosActivos; trackBy: trackBySorteoId" class="sorteo-card" [class.anticipado]="s.sorteo_mayor_id">
-        <div class="sorteo-info" *ngIf="editSorteoId !== s.id">
-          <strong>{{ s.nombre }}</strong>
-          <span class="sorteo-fecha">{{ formatDate(s.fecha) }}</span>
-          <span class="sorteo-tipo">{{ s.tipo }}</span>
-          <span *ngIf="s.premio_descripcion" class="sorteo-premio">{{ s.premio_descripcion }}</span>
-          <span class="badge">{{ s.estado }}</span>
-          <p *ngIf="s.tipo === 'anticipado' && s.numeros_beneficiados" class="numeros-beneficiados">
-            Número bendecido: <strong>{{ s.numeros_beneficiados }}</strong>
-          </p>
-        </div>
-        <div class="edit-form" *ngIf="editSorteoId === s.id">
-          <div class="form-row">
-            <input type="text" placeholder="Nombre" [(ngModel)]="editForm.nombre">
-            <input type="date" [(ngModel)]="editForm.fecha">
-          </div>
-          <div class="form-row">
-            <input type="text" placeholder="Premio" [(ngModel)]="editForm.premio_descripcion">
-          </div>
-          <div class="form-row" *ngIf="s.tipo === 'anticipado'">
-            <input type="text" placeholder="Número bendecido (ej: 1234 o 1234-5678)" [(ngModel)]="editForm.numeros_beneficiados">
-          </div>
-          <div class="form-row" *ngIf="s.tipo === 'mayor'">
-            <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
-          </div>
-          <div class="edit-actions">
-            <button type="button" class="btn-primary" [disabled]="guardandoEditId === s.id" (click)="guardarEdicionSorteo()">
-              {{ guardandoEditId === s.id ? 'Guardando...' : 'Guardar' }}
-            </button>
-            <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
-          </div>
-        </div>
-        <div class="sorteo-actions">
-          <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
-          <button
-            type="button"
-            class="btn-danger"
-            *ngIf="editSorteoId !== s.id"
-            [disabled]="eliminandoSorteoId === s.id"
-            (click)="eliminarSorteo(s); $event.stopPropagation()"
-          >
-            {{ eliminandoSorteoId === s.id ? 'Eliminando...' : 'Eliminar' }}
-          </button>
-          <button
-            *ngIf="(s.tipo || '').toLowerCase() === 'mayor'"
-            type="button"
-            class="btn-realizar"
-            (click)="abrirRealizarSorteo(s); $event.stopPropagation()"
-          >
-            Realizar sorteo
-          </button>
-        </div>
-      </div>
-    </div>
-    <p *ngIf="sorteosActivos.length === 0" class="muted">No hay sorteos activos.</p>
-
-    <!-- Sorteos terminados: un ítem por campaña (premio mayor + número ganador + números bendecidos) -->
-    <h4 class="sorteos-section-title">Sorteos terminados</h4>
-    <div class="sorteos-list sorteos-terminados">
-      <div *ngFor="let grupo of terminadosAgrupados; trackBy: trackByGrupoId" class="sorteo-card sorteo-card-terminado">
-        <div class="sorteo-info">
-          <strong>{{ grupo.mayor.nombre }}</strong>
-          <span class="sorteo-fecha">{{ formatDate(grupo.mayor.fecha) }}</span>
-          <p class="ganador-block" *ngIf="grupo.mayor.numero_ganador_a">
-            <strong>Número ganador (premio mayor):</strong> {{ grupo.mayor.numero_ganador_a }} - {{ grupo.mayor.numero_ganador_b }}
-          </p>
-          <p class="bendecidos-block" *ngIf="grupo.anticipados.length > 0">
-            <strong>Números bendecidos:</strong>
-            <span class="bendecidos-list">
-              <ng-container *ngFor="let a of grupo.anticipados; trackBy: trackBySorteoId; let last = last">
-                {{ a.numeros_beneficiados || ('Anticipado ' + a.id) }}<span *ngIf="!last">, </span>
-              </ng-container>
-            </span>
-          </p>
-        </div>
-
-        <!-- Edición rápida de imagen para el home (foto del ganador) -->
-        <div class="edit-form" *ngIf="editSorteoId === grupo.mayor.id">
-          <div class="form-row">
-            <label style="font-size:0.85rem;margin-bottom:4px;display:block;">Selecciona la foto del ganador</label>
-            <input
-              type="file"
-              accept="image/*"
-              (change)="onFotoFileChange($event, grupo.mayor.id)">
-            <span *ngIf="fotoGanadorFiles[grupo.mayor.id]" class="muted" style="font-size:0.8rem;margin-top:4px;display:block;">
-              {{ fotoGanadorFiles[grupo.mayor.id].name }}
-            </span>
-          </div>
-          <div class="edit-actions">
-            <button
-              type="button"
-              class="btn-primary"
-              [disabled]="guardandoEditId === grupo.mayor.id || !fotoGanadorFiles[grupo.mayor.id]"
-              (click)="guardarFotoGanador(grupo.mayor.id)">
-              {{ guardandoEditId === grupo.mayor.id ? 'Subiendo...' : 'Guardar imagen' }}
-            </button>
-            <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
-          </div>
-        </div>
-
-        <div class="sorteo-actions sorteo-actions-terminado">
-          <button
-            type="button"
-            class="btn-edit"
-            *ngIf="editSorteoId !== grupo.mayor.id"
-            (click)="editarSorteo(grupo.mayor)">
-            Cambiar foto del ganador
-          </button>
-        </div>
-      </div>
-    </div>
-    <p *ngIf="terminadosAgrupados.length === 0" class="muted">No hay sorteos terminados.</p>
-
-    <!-- Panel: ingresar número ganador y realizar sorteo -->
-    <div id="panel-realizar-sorteo" *ngIf="sorteoParaRealizar" class="panel realizar-panel">
-      <h3>Realizar sorteo: {{ sorteoParaRealizar.nombre }}</h3>
-      <p class="muted">El premio mayor se define con una lotería local. Ingresa el número ganador de 4 cifras y el sistema buscará el stiker que lo contiene y mostrará los datos del cliente.</p>
-      <div class="form-row">
-        <label>Número ganador (4 cifras, ej. 1234)</label>
-        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="1234" [(ngModel)]="numeroGanadorInput" (keyup.enter)="verGanador()">
-      </div>
-      <div class="realizar-actions">
-        <button type="button" class="btn-secondary" (click)="verGanador()" [disabled]="consultandoGanador">
-          {{ consultandoGanador ? 'Buscando...' : 'Ver ganador' }}
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item" [class.active]="tab === 'stats'" (click)="selectTab('stats')">
+          <span class="nav-icon" aria-hidden="true">◈</span>
+          Resumen
         </button>
-        <button type="button" class="btn-outline" (click)="cerrarRealizarSorteo()">Cancelar</button>
-      </div>
-      <p class="error-msg" *ngIf="errorRealizar">{{ errorRealizar }}</p>
-      <div *ngIf="ganadorConsultado" class="ganador-preview">
-        <p *ngIf="stikerGanadorConsultado" class="stiker-ganador"><strong>Stiker ganador:</strong> {{ stikerGanadorConsultado }}</p>
-        <p><strong>Cliente:</strong> {{ ganadorConsultado.nombre }}</p>
-        <p><strong>Cédula:</strong> {{ ganadorConsultado.cedula }}</p>
-        <p><strong>Email:</strong> {{ ganadorConsultado.email }}</p>
-        <p><strong>Teléfono:</strong> {{ ganadorConsultado.telefono || '-' }}</p>
-        <button type="button" class="btn-primary" [disabled]="realizandoId === sorteoParaRealizar.id" (click)="confirmarRealizarSorteo()">
-          {{ realizandoId === sorteoParaRealizar.id ? 'Realizando...' : 'Confirmar y dar por terminado' }}
+        <button type="button" class="nav-item" [class.active]="tab === 'orders'" (click)="selectTab('orders')">
+          <span class="nav-icon" aria-hidden="true">◎</span>
+          Ventas
         </button>
-      </div>
-      <div *ngIf="showExtenderFecha" class="extender-fecha">
-        <button type="button" class="btn-secondary" (click)="extenderFechaSorteo()">Extender fecha del sorteo</button>
-        <span class="muted">Así podrás definir una nueva fecha para que más personas participen.</span>
-      </div>
-    </div>
+        <button type="button" class="nav-item" [class.active]="tab === 'sorteos'" (click)="selectTab('sorteos')">
+          <span class="nav-icon" aria-hidden="true">◇</span>
+          Sorteos
+        </button>
+        <button type="button" class="nav-item" [class.active]="tab === 'beneficios'" (click)="selectTab('beneficios')">
+          <span class="nav-icon" aria-hidden="true">★</span>
+          Bendecidos
+        </button>
+        <button type="button" class="nav-item" [class.active]="tab === 'config'" (click)="selectTab('config')">
+          <span class="nav-icon" aria-hidden="true">⚙</span>
+          Configuración
+        </button>
+      </nav>
 
-    <!-- Detalle del cliente ganador tras realizar un sorteo -->
-    <div *ngIf="ganadorActual" class="ganador-detalle">
-      <h3>Detalle del cliente ganador</h3>
-      <ng-container *ngIf="ganadorActual.ganador; else sinGanador">
-        <p><strong>Sorteo:</strong> {{ ganadorActual.sorteo.nombre }} ({{ formatDate(ganadorActual.sorteo.fecha) }})</p>
-        <p><strong>Nombre:</strong> {{ ganadorActual.ganador.nombre }}</p>
-        <p><strong>Cédula:</strong> {{ ganadorActual.ganador.cedula }}</p>
-        <p><strong>Teléfono:</strong> {{ ganadorActual.ganador.telefono || '-' }}</p>
-        <p><strong>Email:</strong> {{ ganadorActual.ganador.email }}</p>
-        <p><strong>Números del cliente:</strong></p>
-        <ul>
-          <li *ngFor="let n of ganadorActual.ganador.numeros">
-            {{ n.numero_a }} - {{ n.numero_b }}
-          </li>
-        </ul>
+      <div class="sidebar-footer">
+        <button type="button" class="btn-logout" (click)="logout()">Cerrar sesión</button>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" *ngIf="mobileNavOpen" (click)="mobileNavOpen = false" aria-hidden="true"></div>
+
+    <div class="admin-main">
+      <header class="admin-topbar">
         <button
           type="button"
-          class="btn-realizar"
-          [disabled]="!ganadorActual.ganador.telefono"
-          (click)="contactarPorWhatsappMayor()">
-          Contactar por WhatsApp
-        </button>
-      </ng-container>
-      <ng-template #sinGanador>
-        <p class="muted">No había números vendidos cuando se realizó este sorteo. No hay cliente ganador.</p>
-      </ng-template>
-    </div>
-  </section>
-
-  <!-- CONFIGURACIÓN -->
-  <section *ngIf="tab === 'config'" class="panel">
-    <h2>Configuración del negocio</h2>
-    <p class="muted">Precio por stiker, moneda y reglas globales para anticipados.</p>
-    <div class="config-panel">
-      <div class="config-form">
-        <div class="form-row">
-        <label>
-          Precio por stiker
-          <span class="muted small">(en {{ config.currency.toUpperCase() }}, ej. {{ config.currency === 'cop' ? '5000' : config.currency === 'usd' ? '5' : '5' }})</span>
-        </label>
-        <input
-          type="number"
-          step="1"
-          min="0"
-          [(ngModel)]="config.precioStikerUnidad"
-          [placeholder]="config.currency === 'cop' ? '5000' : '5'">
-        <small class="field-hint">
-          Ingresa el precio en la moneda seleccionada (no en centavos).
-          {{ config.currency === 'cop' ? 'Ej: 5000 = $5.000 COP por stiker.' : 'Ej: 5 = $5.00 USD por stiker.' }}
-        </small>
-      </div>
-        <div class="form-row">
-        <label>Moneda</label>
-        <select [(ngModel)]="config.currency">
-          <option value="cop">COP (Colombia)</option>
-          <option value="usd">USD</option>
-          <option value="eur">EUR</option>
-          <option value="mxn">MXN</option>
-        </select>
-      </div>
-      <!-- Configuración avanzada: porcentajes por anticipado -->
-      <div class="form-row form-row--toggle-anticipados">
-        <button
-          type="button"
-          class="toggle-anticipados"
-          [attr.aria-expanded]="mostrarConfigAnticipados"
-          (click)="mostrarConfigAnticipados = !mostrarConfigAnticipados"
+          class="btn-menu"
+          (click)="mobileNavOpen = !mobileNavOpen"
+          [attr.aria-expanded]="mobileNavOpen"
+          aria-label="Abrir menú"
         >
-          <span class="toggle-anticipados-icon" aria-hidden="true">{{ mostrarConfigAnticipados ? '▴' : '▾' }}</span>
-          <span class="toggle-anticipados-text">
-            {{ mostrarConfigAnticipados ? 'Ocultar reglas de anticipados' : 'Reglas de anticipados' }}
-            <small class="toggle-anticipados-hint">Avanzado · porcentajes por premio</small>
-          </span>
+          ☰
         </button>
-      </div>
-      <div class="form-row" *ngIf="mostrarConfigAnticipados">
-        <div class="anticipados-card">
-          <h3>Reglas de anticipados</h3>
-          <p class="muted small">
-            Cada fila define el porcentaje mínimo de stikers vendidos para que exista ese premio anticipado.
-            Si el porcentaje vendido permite N anticipados y los clientes compran los números bendecidos, hasta N anticipados podrán revelarse (sin importar el orden).
-          </p>
-          <div class="table-wrap">
-            <table class="data-table anticipados-table">
-            <thead>
-              <tr>
-                <th># Anticipado</th>
-                <th>% mínimo de stikers vendidos</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let p of config.anticipadosPercent; let i = index">
-                <td class="anticipado-label">Anticipado {{ i + 1 }}</td>
-                <td>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    placeholder="ej. 10"
-                    [(ngModel)]="config.anticipadosPercent[i]">
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
+        <div class="topbar-title">
+          <h1>{{ tabTitle }}</h1>
+          <p>{{ tabSubtitle }}</p>
         </div>
-      </div>
-      <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
-        {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}
-      </button>
-      <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
-      </div>
-      <div class="reset-stikers-box">
-        <h4>Mantenimiento de stikers</h4>
-        <p class="muted">
-          <strong>Limpiar pendientes expirados:</strong> libera los slots bloqueados por checkouts abandonados (por defecto más de 30 min sin pago; configurable en el servidor con <code>PENDING_ORDER_EXPIRE_MINUTES</code>).
-          Ejecuta esto si hay stikers que no se pueden comprar sin razón aparente.
-        </p>
-        <button type="button" class="btn-realizar" [disabled]="limpiandoPendientes" (click)="limpiarPendientes()">
-          {{ limpiandoPendientes ? 'Limpiando...' : 'Limpiar slots pendientes expirados' }}
-        </button>
-        <span *ngIf="pendientesLimpiados !== null" class="config-ok">
-          {{ pendientesLimpiados }} órdenes expiradas liberadas.
-        </span>
+      </header>
 
-        <p class="muted" style="margin-top: 1rem;">
-          <strong>Reiniciar todos los stikers a 5000:</strong> borra los slots actuales y crea 5000 nuevos pares de números.
-          Solo usar si los stikers están completamente corrompidos.
-        </p>
-        <button type="button" class="btn-danger" [disabled]="resettingStikers" (click)="reiniciarStikerSlots()">
-          {{ resettingStikers ? 'Reiniciando...' : 'Reiniciar stikers a 5000 (destructivo)' }}
-        </button>
-      </div>
-    </div>
-  </section>
+      <p class="error-msg banner" *ngIf="error">{{ error }}</p>
 
-    <!-- BENEFICIOS ANTICIPADOS -->
-    <section *ngIf="tab === 'beneficios'" class="panel">
-      <h2>Números bendecidos vendidos (entregar premio anticipado)</h2>
-      <p class="muted">Cuando un cliente paga y su stiker coincide con un número bendecido, el ganador aparece aquí al instante (la lista se actualiza sola cada 10 s). Entregue el premio y notifique al cliente.</p>
-      <p class="muted">Si una compra coincide y no aparece, use «Revisar ventas de nuevo» para forzar la detección.</p>
-      <button type="button" class="btn-secondary" [disabled]="revisandoBeneficios" (click)="revisarBeneficios()">
-        {{ revisandoBeneficios ? 'Revisando...' : 'Revisar ventas de nuevo' }}
-      </button>
-      <div class="table-wrap" *ngIf="beneficios.length > 0; else sinBeneficios">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Sorteo</th>
-              <th>Cédula</th>
-              <th>Nombre</th>
-              <th>Número</th>
-              <th>Email</th>
-              <th>Teléfono</th>
-              <th>WhatsApp</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let b of beneficios">
-              <td>{{ formatDate(b.created_at) }}</td>
-              <td>{{ b.sorteo_nombre || ('Sorteo #' + b.sorteo_id) }}</td>
-              <td>{{ b.cedula }}</td>
-              <td>{{ b.nombre }}</td>
-              <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
-              <td>{{ b.email }}</td>
-              <td>{{ b.telefono }}</td>
-              <td>
+      <div class="admin-content">
+        <!-- RESUMEN -->
+        <section *ngIf="tab === 'stats'" class="view view--stack">
+          <div *ngIf="loading" class="loading">Cargando resumen…</div>
+
+          <ng-container *ngIf="!loading && stats">
+            <div class="kpi-row kpi-row--6">
+              <article class="kpi-card accent">
+                <span class="kpi-label">Ingresos totales</span>
+                <span class="kpi-value">{{ formatCents(stats.totalRevenueCents) }}</span>
+                <span class="kpi-meta">{{ config.currency.toUpperCase() }}</span>
+              </article>
+              <article class="kpi-card">
+                <span class="kpi-label">Hoy</span>
+                <span class="kpi-value">{{ formatCents(stats.revenueTodayCents || 0) }}</span>
+                <span class="kpi-meta">{{ stats.ordersToday || 0 }} órdenes pagadas</span>
+              </article>
+              <article class="kpi-card">
+                <span class="kpi-label">Órdenes pagadas</span>
+                <span class="kpi-value">{{ stats.totalOrders }}</span>
+                <span class="kpi-meta">Promedio {{ formatCents(stats.avgOrderCents || 0) }}</span>
+              </article>
+              <article class="kpi-card" [class.warn]="(stats.pendingOrders || 0) > 0">
+                <span class="kpi-label">Pendientes</span>
+                <span class="kpi-value">{{ stats.pendingOrders || 0 }}</span>
+                <span class="kpi-meta">{{ stats.reservedStikers || 0 }} stikers reservados</span>
+              </article>
+              <article class="kpi-card">
+                <span class="kpi-label">Stikers vendidos</span>
+                <span class="kpi-value">{{ stats.totalStikersSold }}</span>
+                <span class="kpi-meta">{{ stikersLibres }} libres · {{ stats.totalStikers }} total</span>
+              </article>
+              <article class="kpi-card">
+                <span class="kpi-label">Bendecidos</span>
+                <span class="kpi-value">{{ stats.beneficiosCount || 0 }}</span>
+                <span class="kpi-meta">{{ stats.beneficiosHoy || 0 }} hoy · {{ cuposAbiertos }}/10 cupos abiertos</span>
+              </article>
+            </div>
+
+            <div class="dash-grid">
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Progreso de venta</h2>
+                    <p class="muted">Porcentaje de stikers pagados sobre el total de la grilla.</p>
+                  </div>
+                  <span class="progress-pct">{{ pctSold | number:'1.0-1' }}%</span>
+                </header>
+                <div class="progress-track" role="progressbar" [attr.aria-valuenow]="pctSold" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-fill" [style.width.%]="pctSold"></div>
+                </div>
+                <div class="progress-legend">
+                  <span><i class="dot sold"></i> Vendidos {{ stats.totalStikersSold }}</span>
+                  <span><i class="dot reserved"></i> Reservados {{ stats.reservedStikers || 0 }}</span>
+                  <span><i class="dot free"></i> Libres {{ stikersLibres }}</span>
+                </div>
+              </article>
+
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Campaña activa</h2>
+                    <p class="muted">Premio mayor en curso.</p>
+                  </div>
+                  <button type="button" class="btn-outline" (click)="selectTab('sorteos')">Ir a sorteos</button>
+                </header>
+                <div *ngIf="stats.campana || premioMayorActivo; else sinCampana" class="campana-box">
+                  <p class="campana-name">{{ (stats.campana || premioMayorActivo)?.nombre }}</p>
+                  <p class="campana-premio" *ngIf="(stats.campana || premioMayorActivo)?.premio_descripcion">
+                    {{ (stats.campana || premioMayorActivo)?.premio_descripcion }}
+                  </p>
+                  <div class="campana-meta">
+                    <span>Fecha: {{ formatDate((stats.campana || premioMayorActivo)!.fecha) }}</span>
+                    <span>Anticipados: {{ stats.anticipadosActivos || 0 }}</span>
+                    <span>Cupos abiertos: {{ cuposAbiertos }}/10</span>
+                  </div>
+                </div>
+                <ng-template #sinCampana>
+                  <p class="muted empty-state">No hay premio mayor activo. Crea uno en Sorteos.</p>
+                </ng-template>
+              </article>
+            </div>
+
+            <div class="dash-grid">
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Ventas recientes</h2>
+                    <p class="muted">Últimas órdenes pagadas.</p>
+                  </div>
+                  <button type="button" class="btn-outline" (click)="selectTab('orders')">Ver todas</button>
+                </header>
+                <ul class="activity-list" *ngIf="ventasRecientes.length > 0; else sinVentasRec">
+                  <li *ngFor="let o of ventasRecientes">
+                    <div>
+                      <strong>{{ o.nombre || 'Cliente' }}</strong>
+                      <span class="activity-sub">{{ o.cedula }} · {{ o.items_count }} stiker(s)</span>
+                    </div>
+                    <div class="activity-right">
+                      <strong>{{ formatCents(o.total_cents) }}</strong>
+                      <span class="activity-sub">{{ formatDate(o.created_at) }}</span>
+                    </div>
+                  </li>
+                </ul>
+                <ng-template #sinVentasRec>
+                  <p class="muted empty-state">Aún no hay ventas pagadas.</p>
+                </ng-template>
+              </article>
+
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Pendientes de pago</h2>
+                    <p class="muted">Reservas sin confirmar (efectivo / checkout).</p>
+                  </div>
+                  <button type="button" class="btn-outline" (click)="selectTab('orders')">Gestionar</button>
+                </header>
+                <ul class="activity-list" *ngIf="ordenesPendientesLista.length > 0; else sinPend">
+                  <li *ngFor="let o of ordenesPendientesLista">
+                    <div>
+                      <strong>{{ o.nombre || 'Cliente' }}</strong>
+                      <span class="activity-sub">{{ o.cedula }} · {{ o.items_count }} stiker(s)</span>
+                    </div>
+                    <div class="activity-right">
+                      <span class="badge">Pendiente</span>
+                      <span class="activity-sub">{{ formatDate(o.created_at) }}</span>
+                    </div>
+                  </li>
+                </ul>
+                <ng-template #sinPend>
+                  <p class="muted empty-state">No hay órdenes pendientes.</p>
+                </ng-template>
+              </article>
+            </div>
+
+            <article class="admin-card">
+              <header class="card-head">
+                <div>
+                  <h2>Últimos números bendecidos</h2>
+                  <p class="muted">Ganadores de anticipados para contactar.</p>
+                </div>
+                <button type="button" class="btn-outline" (click)="selectTab('beneficios')">Ver bendecidos</button>
+              </header>
+              <div class="table-wrap" *ngIf="beneficiosRecientes.length > 0; else sinBenRec">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Sorteo</th>
+                      <th>Cliente</th>
+                      <th>Número</th>
+                      <th>Teléfono</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let b of beneficiosRecientes">
+                      <td>{{ formatDate(b.created_at) }}</td>
+                      <td>{{ b.sorteo_nombre || ('#' + b.sorteo_id) }}</td>
+                      <td>{{ b.nombre || b.cedula || '—' }}</td>
+                      <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
+                      <td>{{ b.telefono || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <ng-template #sinBenRec>
+                <p class="muted empty-state">Todavía no hay coincidencias de números bendecidos.</p>
+              </ng-template>
+            </article>
+
+            <article class="admin-card admin-card--actions">
+              <header class="card-head">
+                <div>
+                  <h2>Accesos rápidos</h2>
+                  <p class="muted">Atajos a las tareas más usadas.</p>
+                </div>
+              </header>
+              <div class="quick-actions">
+                <button type="button" class="quick-btn" (click)="selectTab('orders')">Ventas</button>
+                <button type="button" class="quick-btn" (click)="selectTab('sorteos')">Sorteos</button>
+                <button type="button" class="quick-btn" (click)="selectTab('beneficios')">Bendecidos</button>
+                <button type="button" class="quick-btn" (click)="selectTab('config')">Configuración</button>
+              </div>
+            </article>
+          </ng-container>
+
+          <p *ngIf="!loading && !stats" class="muted empty-state">No hay datos o el backend no está disponible.</p>
+        </section>
+
+        <!-- VENTAS -->
+        <section *ngIf="tab === 'orders'" class="view view--stack">
+          <div class="kpi-row kpi-row--3">
+            <article class="kpi-card accent">
+              <span class="kpi-label">Pagadas</span>
+              <span class="kpi-value">{{ stats?.totalOrders || ventasRecientes.length }}</span>
+            </article>
+            <article class="kpi-card" [class.warn]="ordenesPendientesLista.length > 0">
+              <span class="kpi-label">Pendientes</span>
+              <span class="kpi-value">{{ stats?.pendingOrders ?? ordenesPendientesLista.length }}</span>
+            </article>
+            <article class="kpi-card">
+              <span class="kpi-label">Ingresos</span>
+              <span class="kpi-value">{{ formatCents(stats?.totalRevenueCents || 0) }}</span>
+            </article>
+          </div>
+
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Listado de ventas</h2>
+                <p class="muted">Órdenes registradas y confirmación de pagos en efectivo.</p>
+              </div>
+            </header>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cédula</th>
+                    <th>Nombre</th>
+                    <th>Email</th>
+                    <th>Stikers</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let o of orders">
+                    <td>{{ formatDate(o.created_at) }}</td>
+                    <td>{{ o.cedula }}</td>
+                    <td>{{ o.nombre }}</td>
+                    <td>{{ o.email }}</td>
+                    <td>{{ o.items_count }}</td>
+                    <td>${{ formatCents(o.total_cents) }} {{ o.currency }}</td>
+                    <td>
+                      <span class="badge" [class.paid]="o.status === 'paid'">
+                        {{ o.status === 'paid' ? 'Pagado' : 'Pendiente' }}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        *ngIf="o.status !== 'paid'"
+                        type="button"
+                        class="btn-realizar"
+                        [disabled]="confirmandoId === o.id"
+                        (click)="confirmarEfectivo(o)"
+                      >
+                        {{ confirmandoId === o.id ? 'Confirmando...' : 'Confirmar efectivo' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p *ngIf="orders.length === 0" class="muted empty-state">No hay ventas registradas.</p>
+          </article>
+        </section>
+
+        <!-- SORTEOS -->
+        <section *ngIf="tab === 'sorteos'" class="view view--stack">
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Crear Premio Mayor</h2>
+                <p class="muted">Crea el premio mayor y 10 anticipados (editables después).</p>
+              </div>
+            </header>
+            <div class="sorteo-form">
+              <div class="form-row">
+                <input type="text" placeholder="Nombre (ej. Premio Mayor 2026)" [(ngModel)]="nuevoSorteo.nombre">
+                <input type="date" [(ngModel)]="nuevoSorteo.fecha">
+              </div>
+              <div class="form-row">
+                <input type="text" placeholder="Premio (ej. Moto 0 KM, Bono $500.000 COP)" [(ngModel)]="nuevoSorteo.premio_descripcion">
+              </div>
+              <div class="form-row">
+                <label>Imagen del premio (hero)</label>
+                <p class="muted small">Recomendado: URL de la imagen. La subida de archivo en producción puede fallar.</p>
+                <div class="imagen-opciones">
+                  <input type="url" placeholder="URL de la imagen" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
+                  <span>o</span>
+                  <input type="file" accept="image/*" (change)="onImagenFileChange($event)">
+                  <span *ngIf="imagenFile" class="file-name">{{ imagenFile.name }}</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <input type="text" placeholder="Descripción (opcional)" [(ngModel)]="nuevoSorteo.descripcion">
+              </div>
+              <button type="button" class="btn-primary" [disabled]="guardandoSorteo" (click)="crearSorteo()">
+                {{ guardandoSorteo ? 'Guardando...' : 'Crear sorteo' }}
+              </button>
+            </div>
+          </article>
+
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Sorteos activos</h2>
+                <p class="muted">Campañas en curso y anticipados asociados.</p>
+              </div>
+            </header>
+            <div class="sorteos-list">
+              <div *ngFor="let s of sorteosActivos; trackBy: trackBySorteoId" class="sorteo-card" [class.anticipado]="s.sorteo_mayor_id">
+                <div class="sorteo-info" *ngIf="editSorteoId !== s.id">
+                  <strong>{{ s.nombre }}</strong>
+                  <span class="sorteo-fecha">{{ formatDate(s.fecha) }}</span>
+                  <span class="sorteo-tipo">{{ s.tipo }}</span>
+                  <span *ngIf="s.premio_descripcion" class="sorteo-premio">{{ s.premio_descripcion }}</span>
+                  <span class="badge">{{ s.estado }}</span>
+                  <p *ngIf="s.tipo === 'anticipado' && s.numeros_beneficiados" class="numeros-beneficiados">
+                    Número bendecido: <strong>{{ s.numeros_beneficiados }}</strong>
+                  </p>
+                </div>
+                <div class="edit-form" *ngIf="editSorteoId === s.id">
+                  <div class="form-row">
+                    <input type="text" placeholder="Nombre" [(ngModel)]="editForm.nombre">
+                    <input type="date" [(ngModel)]="editForm.fecha">
+                  </div>
+                  <div class="form-row">
+                    <input type="text" placeholder="Premio" [(ngModel)]="editForm.premio_descripcion">
+                  </div>
+                  <div class="form-row" *ngIf="s.tipo === 'anticipado'">
+                    <input type="text" placeholder="Número bendecido (ej: 1234 o 1234-5678)" [(ngModel)]="editForm.numeros_beneficiados">
+                  </div>
+                  <div class="form-row" *ngIf="s.tipo === 'mayor'">
+                    <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
+                  </div>
+                  <div class="edit-actions">
+                    <button type="button" class="btn-primary" [disabled]="guardandoEditId === s.id" (click)="guardarEdicionSorteo()">
+                      {{ guardandoEditId === s.id ? 'Guardando...' : 'Guardar' }}
+                    </button>
+                    <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
+                  </div>
+                </div>
+                <div class="sorteo-actions">
+                  <button type="button" class="btn-edit" (click)="editarSorteo(s)" *ngIf="editSorteoId !== s.id">Editar</button>
+                  <button
+                    type="button"
+                    class="btn-danger"
+                    *ngIf="editSorteoId !== s.id"
+                    [disabled]="eliminandoSorteoId === s.id"
+                    (click)="eliminarSorteo(s); $event.stopPropagation()"
+                  >
+                    {{ eliminandoSorteoId === s.id ? 'Eliminando...' : 'Eliminar' }}
+                  </button>
+                  <button
+                    *ngIf="(s.tipo || '').toLowerCase() === 'mayor'"
+                    type="button"
+                    class="btn-realizar"
+                    (click)="abrirRealizarSorteo(s); $event.stopPropagation()"
+                  >
+                    Realizar sorteo
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p *ngIf="sorteosActivos.length === 0" class="muted empty-state">No hay sorteos activos.</p>
+          </article>
+
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Sorteos terminados</h2>
+                <p class="muted">Historial por campaña y foto del ganador.</p>
+              </div>
+            </header>
+            <div class="sorteos-list sorteos-terminados">
+              <div *ngFor="let grupo of terminadosAgrupados; trackBy: trackByGrupoId" class="sorteo-card sorteo-card-terminado">
+                <div class="sorteo-info">
+                  <strong>{{ grupo.mayor.nombre }}</strong>
+                  <span class="sorteo-fecha">{{ formatDate(grupo.mayor.fecha) }}</span>
+                  <p class="ganador-block" *ngIf="grupo.mayor.numero_ganador_a">
+                    <strong>Número ganador:</strong> {{ grupo.mayor.numero_ganador_a }} - {{ grupo.mayor.numero_ganador_b }}
+                  </p>
+                  <p class="bendecidos-block" *ngIf="grupo.anticipados.length > 0">
+                    <strong>Números bendecidos:</strong>
+                    <span class="bendecidos-list">
+                      <ng-container *ngFor="let a of grupo.anticipados; trackBy: trackBySorteoId; let last = last">
+                        {{ a.numeros_beneficiados || ('Anticipado ' + a.id) }}<span *ngIf="!last">, </span>
+                      </ng-container>
+                    </span>
+                  </p>
+                </div>
+
+                <div class="edit-form" *ngIf="editSorteoId === grupo.mayor.id">
+                  <div class="form-row">
+                    <label class="field-label">Foto del ganador</label>
+                    <input type="file" accept="image/*" (change)="onFotoFileChange($event, grupo.mayor.id)">
+                    <span *ngIf="fotoGanadorFiles[grupo.mayor.id]" class="muted small">
+                      {{ fotoGanadorFiles[grupo.mayor.id].name }}
+                    </span>
+                  </div>
+                  <div class="edit-actions">
+                    <button
+                      type="button"
+                      class="btn-primary"
+                      [disabled]="guardandoEditId === grupo.mayor.id || !fotoGanadorFiles[grupo.mayor.id]"
+                      (click)="guardarFotoGanador(grupo.mayor.id)"
+                    >
+                      {{ guardandoEditId === grupo.mayor.id ? 'Subiendo...' : 'Guardar imagen' }}
+                    </button>
+                    <button type="button" class="btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
+                  </div>
+                </div>
+
+                <div class="sorteo-actions sorteo-actions-terminado">
+                  <button
+                    type="button"
+                    class="btn-edit"
+                    *ngIf="editSorteoId !== grupo.mayor.id"
+                    (click)="editarSorteo(grupo.mayor)"
+                  >
+                    Cambiar foto del ganador
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p *ngIf="terminadosAgrupados.length === 0" class="muted empty-state">No hay sorteos terminados.</p>
+          </article>
+
+          <article id="panel-realizar-sorteo" *ngIf="sorteoParaRealizar" class="admin-card admin-card--focus">
+            <header class="card-head">
+              <div>
+                <h2>Realizar sorteo: {{ sorteoParaRealizar.nombre }}</h2>
+                <p class="muted">Ingresa el número ganador de 4 cifras de la lotería local.</p>
+              </div>
+            </header>
+            <div class="form-row">
+              <label class="field-label">Número ganador</label>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="1234" [(ngModel)]="numeroGanadorInput" (keyup.enter)="verGanador()">
+            </div>
+            <div class="realizar-actions">
+              <button type="button" class="btn-secondary" (click)="verGanador()" [disabled]="consultandoGanador">
+                {{ consultandoGanador ? 'Buscando...' : 'Ver ganador' }}
+              </button>
+              <button type="button" class="btn-outline" (click)="cerrarRealizarSorteo()">Cancelar</button>
+            </div>
+            <p class="error-msg" *ngIf="errorRealizar">{{ errorRealizar }}</p>
+            <div *ngIf="ganadorConsultado" class="ganador-preview">
+              <p *ngIf="stikerGanadorConsultado" class="stiker-ganador"><strong>Stiker ganador:</strong> {{ stikerGanadorConsultado }}</p>
+              <p><strong>Cliente:</strong> {{ ganadorConsultado.nombre }}</p>
+              <p><strong>Cédula:</strong> {{ ganadorConsultado.cedula }}</p>
+              <p><strong>Email:</strong> {{ ganadorConsultado.email }}</p>
+              <p><strong>Teléfono:</strong> {{ ganadorConsultado.telefono || '-' }}</p>
+              <button type="button" class="btn-primary" [disabled]="realizandoId === sorteoParaRealizar.id" (click)="confirmarRealizarSorteo()">
+                {{ realizandoId === sorteoParaRealizar.id ? 'Realizando...' : 'Confirmar y dar por terminado' }}
+              </button>
+            </div>
+            <div *ngIf="showExtenderFecha" class="extender-fecha">
+              <button type="button" class="btn-secondary" (click)="extenderFechaSorteo()">Extender fecha del sorteo</button>
+              <span class="muted">Define una nueva fecha para seguir vendiendo.</span>
+            </div>
+          </article>
+
+          <article *ngIf="ganadorActual" class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Cliente ganador</h2>
+                <p class="muted">Detalle tras realizar el premio mayor.</p>
+              </div>
+            </header>
+            <ng-container *ngIf="ganadorActual.ganador; else sinGanador">
+              <div class="ganador-detalle">
+                <p><strong>Sorteo:</strong> {{ ganadorActual.sorteo.nombre }} ({{ formatDate(ganadorActual.sorteo.fecha) }})</p>
+                <p><strong>Nombre:</strong> {{ ganadorActual.ganador.nombre }}</p>
+                <p><strong>Cédula:</strong> {{ ganadorActual.ganador.cedula }}</p>
+                <p><strong>Teléfono:</strong> {{ ganadorActual.ganador.telefono || '-' }}</p>
+                <p><strong>Email:</strong> {{ ganadorActual.ganador.email }}</p>
+                <p><strong>Números del cliente:</strong></p>
+                <ul>
+                  <li *ngFor="let n of ganadorActual.ganador.numeros">
+                    {{ n.numero_a }} - {{ n.numero_b }}
+                  </li>
+                </ul>
                 <button
                   type="button"
                   class="btn-realizar"
-                  [disabled]="!b.telefono"
-                  (click)="contactarPorWhatsappBeneficio(b)">
-                  WhatsApp
+                  [disabled]="!ganadorActual.ganador.telefono"
+                  (click)="contactarPorWhatsappMayor()"
+                >
+                  Contactar por WhatsApp
                 </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </ng-container>
+            <ng-template #sinGanador>
+              <p class="muted empty-state">No había números vendidos. No hay cliente ganador.</p>
+            </ng-template>
+          </article>
+        </section>
+
+        <!-- BENEFICIOS -->
+        <section *ngIf="tab === 'beneficios'" class="view">
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Números bendecidos vendidos</h2>
+                <p class="muted">Ganadores de anticipados. La lista se actualiza sola cada 10 s.</p>
+              </div>
+              <button type="button" class="btn-secondary" [disabled]="revisandoBeneficios" (click)="revisarBeneficios()">
+                {{ revisandoBeneficios ? 'Revisando...' : 'Revisar ventas' }}
+              </button>
+            </header>
+            <div class="table-wrap" *ngIf="beneficios.length > 0; else sinBeneficios">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Sorteo</th>
+                    <th>Cédula</th>
+                    <th>Nombre</th>
+                    <th>Número</th>
+                    <th>Email</th>
+                    <th>Teléfono</th>
+                    <th>WhatsApp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let b of beneficios">
+                    <td>{{ formatDate(b.created_at) }}</td>
+                    <td>{{ b.sorteo_nombre || ('Sorteo #' + b.sorteo_id) }}</td>
+                    <td>{{ b.cedula }}</td>
+                    <td>{{ b.nombre }}</td>
+                    <td>{{ b.numero_a }} - {{ b.numero_b }}</td>
+                    <td>{{ b.email }}</td>
+                    <td>{{ b.telefono }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="btn-realizar"
+                        [disabled]="!b.telefono"
+                        (click)="contactarPorWhatsappBeneficio(b)"
+                      >
+                        WhatsApp
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <ng-template #sinBeneficios>
+              <p class="muted empty-state">Aún no hay números beneficiados vendidos.</p>
+            </ng-template>
+          </article>
+        </section>
+
+        <!-- CONFIGURACIÓN -->
+        <section *ngIf="tab === 'config'" class="view view--stack">
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Precio y moneda</h2>
+                <p class="muted">Valor comercial del stiker.</p>
+              </div>
+            </header>
+            <div class="config-form">
+              <div class="form-row">
+                <label>
+                  Precio por stiker
+                  <span class="muted small">(en {{ config.currency.toUpperCase() }})</span>
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  [(ngModel)]="config.precioStikerUnidad"
+                  [placeholder]="config.currency === 'cop' ? '20000' : '5'"
+                >
+                <small class="field-hint">
+                  {{ config.currency === 'cop' ? 'Ej: 20000 = $20.000 COP por stiker.' : 'Ej: 5 = $5.00 por stiker.' }}
+                </small>
+              </div>
+              <div class="form-row">
+                <label>Moneda</label>
+                <select [(ngModel)]="config.currency">
+                  <option value="cop">COP (Colombia)</option>
+                  <option value="usd">USD</option>
+                  <option value="eur">EUR</option>
+                  <option value="mxn">MXN</option>
+                </select>
+              </div>
+              <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
+                {{ guardandoConfig ? 'Guardando...' : 'Guardar configuración' }}
+              </button>
+              <span *ngIf="configGuardada" class="config-ok">Guardado correctamente.</span>
+            </div>
+          </article>
+
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
+                <h2>Cupos de anticipados</h2>
+                <p class="muted">Porcentaje vendido que abre cada cupo de premio.</p>
+              </div>
+              <button
+                type="button"
+                class="btn-outline"
+                [attr.aria-expanded]="mostrarConfigAnticipados"
+                (click)="mostrarConfigAnticipados = !mostrarConfigAnticipados"
+              >
+                {{ mostrarConfigAnticipados ? 'Ocultar' : 'Mostrar' }}
+              </button>
+            </header>
+            <div *ngIf="mostrarConfigAnticipados" class="anticipados-panel">
+              <p class="anticipados-hint">
+                Cada casilla es un <strong>cupo</strong>. Al llegar al % indicado se abre un premio más
+                (puede ganar cualquiera de los 10 cuyo número bendecido coincida).
+              </p>
+              <div class="cupos-grid">
+                <label
+                  class="cupo-tile"
+                  *ngFor="let p of config.anticipadosPercent; let i = index"
+                >
+                  <span class="cupo-index">Cupo {{ i + 1 }}</span>
+                  <span class="cupo-field">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      placeholder="10"
+                      [(ngModel)]="config.anticipadosPercent[i]"
+                      [name]="'cupoPct' + i"
+                    >
+                    <span class="cupo-suffix">%</span>
+                  </span>
+                  <span class="cupo-caption">mín. vendido</span>
+                </label>
+              </div>
+              <div class="anticipados-actions">
+                <button type="button" class="btn-primary" [disabled]="guardandoConfig" (click)="guardarConfig()">
+                  {{ guardandoConfig ? 'Guardando...' : 'Guardar cupos' }}
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <article class="admin-card admin-card--danger-zone">
+            <header class="card-head">
+              <div>
+                <h2>Mantenimiento</h2>
+                <p class="muted">Herramientas operativas. Úsalas con cuidado.</p>
+              </div>
+            </header>
+            <div class="reset-stikers-box">
+              <div class="maint-block">
+                <h4>Limpiar pendientes expirados</h4>
+                <p class="muted">
+                  Libera slots bloqueados por checkouts abandonados (por defecto más de 30 min sin pago).
+                </p>
+                <button type="button" class="btn-realizar" [disabled]="limpiandoPendientes" (click)="limpiarPendientes()">
+                  {{ limpiandoPendientes ? 'Limpiando...' : 'Limpiar slots pendientes' }}
+                </button>
+                <span *ngIf="pendientesLimpiados !== null" class="config-ok">
+                  {{ pendientesLimpiados }} órdenes expiradas liberadas.
+                </span>
+              </div>
+
+              <div class="maint-block maint-block--danger">
+                <h4 class="danger-title">Reiniciar stikers a 5000</h4>
+                <p class="muted">
+                  Borra los slots actuales y crea 5000 nuevos. Solo si hay corrupciones graves.
+                </p>
+                <button type="button" class="btn-danger" [disabled]="resettingStikers" (click)="reiniciarStikerSlots()">
+                  {{ resettingStikers ? 'Reiniciando...' : 'Reiniciar stikers (destructivo)' }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </section>
       </div>
-      <ng-template #sinBeneficios>
-        <p class="muted">Aún no hay números beneficiados vendidos.</p>
-      </ng-template>
-    </section>
-  </ng-container>
+    </div>
+  </div>
 </div>

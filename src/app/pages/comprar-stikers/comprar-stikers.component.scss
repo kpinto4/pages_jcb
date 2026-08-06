@@ -266,6 +266,11 @@
       box-shadow: 0 0 0 2px var(--accent-light);
     }
   }
+
+  .limite-compra {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
 }
 
 .paginacion-info {
@@ -376,7 +381,7 @@
   transition: all 0.2s ease;
   text-align: center;
 
-  &:hover:not(.ocupado) {
+  &:hover:not(.ocupado):not(.reservado) {
     transform: scale(1.05);
     border-color: var(--accent);
   }
@@ -391,6 +396,14 @@
     color: var(--text-muted);
     cursor: not-allowed;
     opacity: 0.8;
+  }
+
+  &.reservado {
+    background: #fff7ed;
+    border-color: #fdba74;
+    color: #9a3412;
+    cursor: not-allowed;
+    opacity: 0.9;
   }
 }
 

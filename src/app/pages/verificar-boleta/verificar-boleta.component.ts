@@ -37,8 +37,12 @@ export class VerificarStikerComponent {
           this.error = 'No se encontraron stikers para esta cédula.';
         }
       },
-      error: () => {
+      error: (err) => {
         this.buscando = false;
+        if (err?.status === 429) {
+          this.error = 'Demasiadas consultas. Espera un momento e inténtalo de nuevo.';
+          return;
+        }
         this.error = 'No se pudo conectar con el servidor. Verifica que el backend esté en marcha.';
       }
     });

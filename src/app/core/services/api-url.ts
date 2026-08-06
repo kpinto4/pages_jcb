@@ -1,24 +1,33 @@
 import { environment } from '../../../environments/environment';
 
-const BACKEND_PORT = 3012;
-
 /**
- * URL base del backend API. Nunca devuelve vacío en el navegador para evitar que las peticiones vayan al mismo origen (front).
- * Puertos: Frontend 3015 | Backend 3012.
+ * URL base del backend API.
+ * Local: vacío → peticiones a /api vía proxy (ng serve :3015 → backend :3012).
+ * Producción: dominio del API.
  */
+/** Ruta API absoluta o relativa (local con proxy usa /api/...). */
+export function apiEndpoint(path: string): string {
+  const base = getApiUrl();
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return base ? `${base}${p}` : p;
+}
+
 export function getApiUrl(): string {
   if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol;
     const host = window.location.hostname;
     const isLocal = host === 'localhost' || host === '127.0.0.1';
 
-    // Si NO es local (es decir, es tu dominio real), NO agregues el puerto.
+    // Producción: API en el mismo dominio público del backend.
     if (!isLocal) {
-      return `https://n1.voriamtechnologies.com`;
+      return environment.paymentApiUrl || 'https://n1.voriamtechnologies.com';
     }
 
-    // Para desarrollo local, seguimos usando el puerto 3012.
-    return environment.paymentApiUrl || `${protocol}//${host}:${BACKEND_PORT}`;
+    // Local: mismo origen (ng serve :3015 + proxy.conf.json → backend :3012).
+    // Vacío = peticiones a /api/* en el puerto del front.
+    if (environment.paymentApiUrl) {
+      return environment.paymentApiUrl;
+    }
+    return '';
   }
   return environment.paymentApiUrl || '';
 }
@@ -45,9 +54,28 @@ export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || !url.trim()) return '';
 
   let u = url.trim();
-
-  // quitar /api si viene desde el backend
   u = u.replace('/api/uploads', '/uploads');
 
+  const base = getApiUrl();
+  if (u.startsWith('/uploads') || (u.startsWith('/') && !u.startsWith('//'))) {
+    return base ? base + u : u;
+  }
+  if (/localhost|127\.0\.0\.1/i.test(u)) {
+    const path = u.replace(/^https?:\/\/[^/]+/, '') || '/uploads/';
+    return base ? base + path : u;
+  }
+  // Reescribir /uploads/ de otro host al API configurado (ej. dominio con SSL roto)
+  const uploadsMatch = u.match(/^(https?:\/\/[^/]+)(\/uploads\/.*)$/i);
+  if (uploadsMatch && base) {
+    try {
+      const baseHost = new URL(base).hostname;
+      const srcHost = new URL(u).hostname;
+      if (srcHost !== baseHost) {
+        return base + uploadsMatch[2];
+      }
+    } catch {
+      /* mantener u */
+    }
+  }
   return u;
 }
