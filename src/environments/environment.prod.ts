@@ -1,7 +1,7 @@
 export const environment = {
   production: true,
   /** URL del backend en el servidor. Así el build siempre llama al API correcto (también si abres por túnel/localhost). */
-  paymentApiUrl: 'https://n1.voriamtechnologies.com',
+  paymentApiUrl: 'http://172.82.74.133:3012',
   whatsappDudasUrl: '',
   whatsappComunidadUrl: '',
   socialFacebookUrl: '',
