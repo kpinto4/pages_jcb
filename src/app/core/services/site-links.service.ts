@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { getApiUrl } from './api-url';
+import { apiEndpoint } from './api-url';
 import { environment } from '../../../environments/environment';
 
 /** Enlaces públicos (WhatsApp y redes) desde `/api/config` o `environment` como respaldo. */
@@ -17,11 +17,26 @@ function trim(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** Placeholders de .env.example: no mostrarlos como redes reales. */
+function isUsableUrl(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (!v) return false;
+  if (!/^https?:\/\//i.test(v)) return false;
+  return !(
+    v.includes('xxxxxx') ||
+    v.includes('tu-pagina') ||
+    v.includes('tu-perfil') ||
+    v.includes('@tu-usuario') ||
+    v.includes('tudominio')
+  );
+}
+
 function mergeLinks(api: Record<string, unknown> | null): SitePublicLinks {
   const pick = (apiKey: keyof SitePublicLinks): string => {
     const fromApi = api ? trim(api[apiKey as string]) : '';
-    if (fromApi) return fromApi;
-    return trim((environment as Record<string, unknown>)[apiKey as string]);
+    if (isUsableUrl(fromApi)) return fromApi.trim();
+    const fromEnv = trim((environment as Record<string, unknown>)[apiKey as string]);
+    return isUsableUrl(fromEnv) ? fromEnv : '';
   };
   return {
     whatsappDudasUrl: pick('whatsappDudasUrl'),
@@ -40,9 +55,7 @@ export class SiteLinksService {
   readonly links$: Observable<SitePublicLinks> = this.subject.asObservable();
 
   constructor(private readonly http: HttpClient) {
-    const api = getApiUrl();
-    if (!api) return;
-    this.http.get<Record<string, unknown>>(`${api}/api/config`).subscribe({
+    this.http.get<Record<string, unknown>>(apiEndpoint('/api/config')).subscribe({
       next: (body) => this.subject.next(mergeLinks(body)),
       error: () => {
         /* se mantiene el valor inicial desde environment */

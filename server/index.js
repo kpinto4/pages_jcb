@@ -1066,13 +1066,38 @@ app.post('/api/admin/revisar-beneficios', async (req, res) => {
 
 // ----- CONFIG (público: precio stiker + enlaces de contacto / redes desde .env) -----
 
+/** Valores de .env.example: no son enlaces reales y no deben pintarse en el footer. */
+function isPlaceholderPublicUrl(value) {
+  const v = (value || '').trim().toLowerCase();
+  if (!v) return true;
+  return (
+    v.includes('xxxxxx') ||
+    v.includes('tu-pagina') ||
+    v.includes('tu-perfil') ||
+    v.includes('@tu-usuario') ||
+    v.includes('tudominio')
+  );
+}
+
+function publicEnvUrl(key, fallback = '') {
+  const raw = (process.env[key] || '').trim();
+  if (!raw || isPlaceholderPublicUrl(raw)) return fallback;
+  return raw;
+}
+
 function publicLinksFromEnv() {
   return {
-    whatsappDudasUrl: (process.env.PUBLIC_WHATSAPP_DUDAS_URL || '').trim(),
-    whatsappComunidadUrl: (process.env.PUBLIC_WHATSAPP_COMUNIDAD_URL || '').trim(),
-    socialFacebookUrl: (process.env.PUBLIC_SOCIAL_FACEBOOK_URL || '').trim(),
-    socialInstagramUrl: (process.env.PUBLIC_SOCIAL_INSTAGRAM_URL || '').trim(),
-    socialTiktokUrl: (process.env.PUBLIC_SOCIAL_TIKTOK_URL || '').trim()
+    whatsappDudasUrl: publicEnvUrl('PUBLIC_WHATSAPP_DUDAS_URL', 'https://wa.me/573187936740'),
+    whatsappComunidadUrl: publicEnvUrl('PUBLIC_WHATSAPP_COMUNIDAD_URL'),
+    socialFacebookUrl: publicEnvUrl(
+      'PUBLIC_SOCIAL_FACEBOOK_URL',
+      'https://www.facebook.com/share/1LgDzheb4T/?mibextid=wwXIfr'
+    ),
+    socialInstagramUrl: publicEnvUrl(
+      'PUBLIC_SOCIAL_INSTAGRAM_URL',
+      'https://www.instagram.com/juegoslaciudadbonita_'
+    ),
+    socialTiktokUrl: publicEnvUrl('PUBLIC_SOCIAL_TIKTOK_URL')
   };
 }
 
