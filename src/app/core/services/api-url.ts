@@ -19,7 +19,7 @@ export function getApiUrl(): string {
 
     // Producción: API en el mismo dominio público del backend.
     if (!isLocal) {
-      return environment.paymentApiUrl || 'http://172.82.74.133:3012';
+      return environment.paymentApiUrl || 'https://inversiones.voriamtechnologies.com';
     }
 
     // Local: mismo origen (ng serve :3015 + proxy.conf.json → backend :3012).
