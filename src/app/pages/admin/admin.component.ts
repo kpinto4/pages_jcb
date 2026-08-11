@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -115,6 +115,10 @@ export class AdminComponent implements OnInit, OnDestroy {
   limpiandoPendientes = false;
   pendientesLimpiados: number | null = null;
 
+  diagnostico: Diagnostico | null = null;
+  diagnosticando = false;
+  errorDiagnostico = '';
+
   ganadorActual: SorteoGanadorResponse | null = null;
 
   /** Flujo realizar con número de lotería: sorteo elegido, número ingresado, resultado de consultar */
@@ -173,6 +177,30 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.cargarBeneficios();
       this.startBeneficiosPolling();
     }
+    if (t === 'config' && !this.diagnostico) {
+      this.ejecutarDiagnostico();
+    }
+  }
+
+  /** Prueba en vivo BD, Wompi, SMTP, admin y CORS del backend actual (sin reiniciar el servidor). */
+  ejecutarDiagnostico(): void {
+    this.diagnosticando = true;
+    this.errorDiagnostico = '';
+    this.adminService.getDiagnostico().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (d) => {
+        this.diagnosticando = false;
+        if (d) {
+          this.diagnostico = d;
+        } else {
+          this.errorDiagnostico = 'No se pudo obtener el diagnóstico del servidor.';
+        }
+      },
+      error: (err) => {
+        this.diagnosticando = false;
+        if (err?.status === 401) this.on401();
+        else this.errorDiagnostico = 'No se pudo obtener el diagnóstico del servidor.';
+      }
+    });
   }
 
   private startBeneficiosPolling(): void {

@@ -86,6 +86,22 @@ export interface AppConfig {
   anticipados_percent?: string;
 }
 
+export interface DiagnosticoCheck {
+  ok: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface Diagnostico {
+  checkedAt: string;
+  db: DiagnosticoCheck & { hasDatabaseUrl: boolean };
+  wompi: DiagnosticoCheck & { mode?: string };
+  smtp: DiagnosticoCheck & { configured: boolean; host: string | null; port: number; user: string | null; secure: string };
+  admin: DiagnosticoCheck;
+  cors: { allowedOrigin: string | null; note?: string };
+  publicApiUrl: string | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -199,6 +215,13 @@ export class AdminService {
       .pipe(
         catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
       );
+  }
+
+  /** Prueba en vivo la BD, Wompi, SMTP, admin y CORS del backend actual (sin reiniciar el servidor). */
+  getDiagnostico(): Observable<Diagnostico | null> {
+    return this.http.get<Diagnostico>(`${this.base}/api/admin/diagnostico`).pipe(
+      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
+    );
   }
 
   realizarSorteo(id: number, numero_ganador: string): Observable<SorteoGanadorResponse | null> {

@@ -634,6 +634,60 @@
           <article class="admin-card">
             <header class="card-head">
               <div>
+                <h2>Diagnóstico del sistema</h2>
+                <p class="muted">Prueba en vivo la base de datos, Wompi, el correo (SMTP) y el acceso admin, sin reiniciar el servidor.</p>
+              </div>
+              <button type="button" class="btn-outline" [disabled]="diagnosticando" (click)="ejecutarDiagnostico()">
+                {{ diagnosticando ? 'Probando...' : 'Probar conexión' }}
+              </button>
+            </header>
+            <p class="error-msg" *ngIf="errorDiagnostico">{{ errorDiagnostico }}</p>
+            <div class="diagnostico-grid" *ngIf="diagnostico as d">
+              <div class="diagnostico-item" [class.is-ok]="d.db.ok" [class.is-fail]="!d.db.ok">
+                <span class="diagnostico-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>Base de datos</strong>
+                  <p>{{ d.db.ok ? 'Conectada' : (d.db.error || 'Sin conexión') }}</p>
+                </div>
+              </div>
+              <div class="diagnostico-item" [class.is-ok]="d.wompi.ok" [class.is-fail]="!d.wompi.ok">
+                <span class="diagnostico-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>Wompi</strong>
+                  <p>{{ d.wompi.ok ? ('Activo (' + d.wompi.mode + ')') : (d.wompi.error || 'No configurado') }}</p>
+                </div>
+              </div>
+              <div class="diagnostico-item" [class.is-ok]="d.smtp.ok" [class.is-fail]="!d.smtp.ok">
+                <span class="diagnostico-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>Correo (SMTP)</strong>
+                  <p *ngIf="d.smtp.configured">
+                    {{ d.smtp.ok ? ('Conectado: ' + d.smtp.user) : (d.smtp.error || 'No autentica') }}
+                  </p>
+                  <p *ngIf="!d.smtp.configured">No configurado (SMTP_HOST / SMTP_USER / SMTP_PASS).</p>
+                </div>
+              </div>
+              <div class="diagnostico-item" [class.is-ok]="d.admin.ok" [class.is-fail]="!d.admin.ok">
+                <span class="diagnostico-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>Acceso admin</strong>
+                  <p>{{ d.admin.ok ? 'Configurado' : (d.admin.error || 'Sin configurar') }}</p>
+                </div>
+              </div>
+              <div class="diagnostico-item" [class.is-ok]="!!d.cors.allowedOrigin" [class.is-fail]="!d.cors.allowedOrigin">
+                <span class="diagnostico-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>CORS</strong>
+                  <p>{{ d.cors.allowedOrigin ? d.cors.allowedOrigin : (d.cors.note || 'Sin restricción') }}</p>
+                </div>
+              </div>
+            </div>
+            <p class="muted small" *ngIf="diagnostico">Última prueba: {{ diagnostico.checkedAt | date:'short' }}</p>
+          </article>
+
+          <article class="admin-card">
+            <header class="card-head">
+              <div>
                 <h2>Precio y moneda</h2>
                 <p class="muted">Valor comercial del stiker.</p>
               </div>

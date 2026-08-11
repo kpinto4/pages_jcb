@@ -5,10 +5,11 @@
 import nodemailer from 'nodemailer';
 
 const host = (process.env.SMTP_HOST || '').trim();
-const port = parseInt(process.env.SMTP_PORT || '587', 10);
+const port = parseInt(process.env.SMTP_PORT || '465', 10);
 const user = (process.env.SMTP_USER || '').trim();
-const pass = (process.env.SMTP_PASS || '').trim();
+const pass = (process.env.SMTP_PASS || '').replace(/^\s+|\s+$/g, '');
 const configurado = !!(host && user && pass);
+const useSsl = port === 465;
 
 let transporter = null;
 if (configurado) {
@@ -16,12 +17,57 @@ if (configurado) {
     transporter = nodemailer.createTransport({
       host,
       port,
-      secure: port === 465,
-      auth: { user, pass }
+      secure: useSsl,
+      requireTLS: !useSsl,
+      auth: { user, pass },
+      tls: { servername: host, minVersion: 'TLSv1.2' }
     });
   } catch (e) {
     console.warn('Email: error configurando SMTP:', e.message);
   }
+}
+
+/** Último resultado de `transporter.verify()`, para mostrar en /api/admin/diagnostico sin reiniciar el servidor. */
+let lastCheck = { checkedAt: null, ok: null, error: null };
+
+/** Prueba la conexión/autenticación SMTP ahora mismo (no envía correo). Cachea el resultado. */
+export async function verificarSmtp() {
+  if (!configurado || !transporter) {
+    lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: 'SMTP no configurado (faltan SMTP_HOST, SMTP_USER o SMTP_PASS)' };
+    return lastCheck;
+  }
+  try {
+    await transporter.verify();
+    lastCheck = { checkedAt: new Date().toISOString(), ok: true, error: null };
+  } catch (e) {
+    lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: e?.response || e?.message || String(e) };
+  }
+  return lastCheck;
+}
+
+/** Estado actual para diagnóstico (config + último chequeo, sin exponer la contraseña). */
+export function estadoSmtp() {
+  return {
+    configured: configurado,
+    host: host || null,
+    port,
+    user: user || null,
+    secure: useSsl ? 'SSL' : 'STARTTLS',
+    ...lastCheck
+  };
+}
+
+if (configurado) {
+  verificarSmtp().then((r) => {
+    if (r.ok) {
+      console.log(`SMTP listo: ${user} @ ${host}:${port} (${useSsl ? 'SSL' : 'STARTTLS'})`);
+    } else {
+      console.warn(
+        `SMTP no autentica (${user} @ ${host}:${port}): ${r.error}. ` +
+        'En SpaceMail: habilita IMAP/SMTP/POP3 en el buzón, entra a webmail con la misma contraseña y reinicia el backend.'
+      );
+    }
+  });
 }
 
 /** Envía el comprobante al cliente. Devuelve true si OK, false si no. */
@@ -33,7 +79,8 @@ export async function enviarComprobante(order, items = []) {
   const nombre = (order?.nombre || '').trim() || 'Cliente';
   const total = Number(order?.total_cents || 0) / 100;
   const moneda = ((order?.currency || 'cop') + '').toUpperCase();
-  const fromAddr = (process.env.EMAIL_FROM || user || 'no_reply@inversionesjcb.online').trim();
+  const fromRaw = (process.env.EMAIL_FROM || user || 'no_reply@inversionesjcb.online').trim();
+  const fromAddr = fromRaw.includes('<') ? fromRaw : `Juego de la Ciudad Bonita <${fromRaw}>`;
 
   const numerosRows = items.length > 0
     ? items.map(i => `<tr><td style="padding:10px 16px;border-bottom:1px solid #e5e7eb;font-size:16px;font-weight:600;color:#166534;">${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</td></tr>`).join('')
