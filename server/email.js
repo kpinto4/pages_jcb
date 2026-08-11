@@ -33,7 +33,7 @@ export async function enviarComprobante(order, items = []) {
   const nombre = (order?.nombre || '').trim() || 'Cliente';
   const total = Number(order?.total_cents || 0) / 100;
   const moneda = ((order?.currency || 'cop') + '').toUpperCase();
-  const fromAddr = (process.env.EMAIL_FROM || user || 'noreply@example.com').trim();
+  const fromAddr = (process.env.EMAIL_FROM || user || 'no_reply@inversionesjcb.online').trim();
 
   const numerosRows = items.length > 0
     ? items.map(i => `<tr><td style="padding:10px 16px;border-bottom:1px solid #e5e7eb;font-size:16px;font-weight:600;color:#166534;">${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</td></tr>`).join('')
