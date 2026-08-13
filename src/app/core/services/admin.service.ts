@@ -219,9 +219,7 @@ export class AdminService {
 
   /** Prueba en vivo la BD, Wompi, SMTP, admin y CORS del backend actual (sin reiniciar el servidor). */
   getDiagnostico(): Observable<Diagnostico | null> {
-    return this.http.get<Diagnostico>(`${this.base}/api/admin/diagnostico`).pipe(
-      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
-    );
+    return this.http.get<Diagnostico>(`${this.base}/api/admin/diagnostico`);
   }
 
   realizarSorteo(id: number, numero_ganador: string): Observable<SorteoGanadorResponse | null> {

@@ -20,7 +20,10 @@ if (configurado) {
       secure: useSsl,
       requireTLS: !useSsl,
       auth: { user, pass },
-      tls: { servername: host, minVersion: 'TLSv1.2' }
+      tls: { servername: host, minVersion: 'TLSv1.2' },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000
     });
   } catch (e) {
     console.warn('Email: error configurando SMTP:', e.message);
@@ -30,6 +33,14 @@ if (configurado) {
 /** Último resultado de `transporter.verify()`, para mostrar en /api/admin/diagnostico sin reiniciar el servidor. */
 let lastCheck = { checkedAt: null, ok: null, error: null };
 
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** Prueba la conexión/autenticación SMTP ahora mismo (no envía correo). Cachea el resultado. */
 export async function verificarSmtp() {
   if (!configurado || !transporter) {
@@ -37,7 +48,11 @@ export async function verificarSmtp() {
     return lastCheck;
   }
   try {
-    await transporter.verify();
+    await withTimeout(
+      transporter.verify(),
+      10000,
+      `Timeout al conectar con ${host}:${port}. El servidor no alcanzó SpaceMail (firewall o red).`
+    );
     lastCheck = { checkedAt: new Date().toISOString(), ok: true, error: null };
   } catch (e) {
     lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: e?.response || e?.message || String(e) };
@@ -62,10 +77,13 @@ if (configurado) {
     if (r.ok) {
       console.log(`SMTP listo: ${user} @ ${host}:${port} (${useSsl ? 'SSL' : 'STARTTLS'})`);
     } else {
-      console.warn(
-        `SMTP no autentica (${user} @ ${host}:${port}): ${r.error}. ` +
-        'En SpaceMail: habilita IMAP/SMTP/POP3 en el buzón, entra a webmail con la misma contraseña y reinicia el backend.'
-      );
+      console.warn(`SMTP no autentica (${user} @ ${host}:${port}): ${r.error}`);
+      if (/\b535\b/.test(String(r.error))) {
+        console.warn(
+          '  535 = el servidor rechazó usuario o contraseña. Revisa SMTP_USER y SMTP_PASS en server/.env ' +
+          '(es el único .env que carga el backend) y que el buzón tenga IMAP/SMTP/POP3 habilitado.'
+        );
+      }
     }
   });
 }

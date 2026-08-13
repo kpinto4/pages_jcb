@@ -198,7 +198,12 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.diagnosticando = false;
         if (err?.status === 401) this.on401();
-        else this.errorDiagnostico = 'No se pudo obtener el diagnóstico del servidor.';
+        else if (err?.status === 504 || err?.status === 0) {
+          this.errorDiagnostico =
+            'El servidor tardó demasiado en responder (timeout). Suele ser la prueba SMTP. Vuelve a intentar tras desplegar el backend con el timeout de correo.';
+        } else {
+          this.errorDiagnostico = err?.error?.error || 'No se pudo obtener el diagnóstico del servidor.';
+        }
       }
     });
   }

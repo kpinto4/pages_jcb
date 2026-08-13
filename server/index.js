@@ -279,49 +279,55 @@ app.use('/api/admin', adminAuthMiddleware);
 
 // ----- ADMIN: diagnóstico en vivo (DB, Wompi, SMTP, CORS) sin reiniciar el servidor -----
 app.get('/api/admin/diagnostico', async (req, res) => {
-  let dbOk = false;
-  let dbError = dbInitError || null;
   try {
-    if (db) {
-      await db.get('SELECT 1');
-      dbOk = true;
+    let dbOk = false;
+    let dbError = dbInitError || null;
+    try {
+      if (db) {
+        await db.get('SELECT 1');
+        dbOk = true;
+      }
+    } catch (e) {
+      dbOk = false;
+      dbError = e?.message || String(e);
     }
-  } catch (e) {
-    dbOk = false;
-    dbError = e?.message || String(e);
+
+    await verificarSmtp();
+    const smtp = estadoSmtp();
+
+    res.json({
+      checkedAt: new Date().toISOString(),
+      db: { ok: dbOk, hasDatabaseUrl: !!process.env.DATABASE_URL, error: dbError || undefined },
+      wompi: {
+        ok: wompiEnabled,
+        mode: wompiEnabled ? (wompiPublicKey.startsWith('pub_test_') ? 'sandbox' : 'produccion') : undefined,
+        error: wompiEnabled ? undefined : 'Faltan WOMPI_PUBLIC_KEY o WOMPI_INTEGRITY_SECRET'
+      },
+      smtp: {
+        ok: !!smtp.ok,
+        configured: smtp.configured,
+        host: smtp.host,
+        port: smtp.port,
+        user: smtp.user,
+        secure: smtp.secure,
+        error: smtp.ok ? undefined : smtp.error
+      },
+      admin: {
+        ok: !!adminPassword,
+        error: adminPassword ? undefined : 'ADMIN_PASSWORD no definida'
+      },
+      cors: {
+        allowedOrigin: process.env.ALLOWED_ORIGIN || null,
+        note: process.env.ALLOWED_ORIGIN
+          ? undefined
+          : 'Sin ALLOWED_ORIGIN definido: se acepta cualquier origen (solo recomendable en desarrollo).'
+      },
+      publicApiUrl: publicApiUrl || null
+    });
+  } catch (err) {
+    console.error('Error GET /api/admin/diagnostico:', err);
+    res.status(500).json({ error: 'No se pudo completar el diagnóstico', detail: err?.message });
   }
-
-  const smtp = await verificarSmtp();
-
-  res.json({
-    checkedAt: new Date().toISOString(),
-    db: { ok: dbOk, hasDatabaseUrl: !!process.env.DATABASE_URL, error: dbError || undefined },
-    wompi: {
-      ok: wompiEnabled,
-      mode: wompiEnabled ? (wompiPublicKey.startsWith('pub_test_') ? 'sandbox' : 'produccion') : undefined,
-      error: wompiEnabled ? undefined : 'Faltan WOMPI_PUBLIC_KEY o WOMPI_INTEGRITY_SECRET'
-    },
-    smtp: {
-      ok: !!smtp.ok,
-      configured: smtp.configured,
-      host: smtp.host,
-      port: smtp.port,
-      user: smtp.user,
-      secure: smtp.secure,
-      error: smtp.ok ? undefined : smtp.error
-    },
-    admin: {
-      ok: !!adminPassword,
-      error: adminPassword ? undefined : 'ADMIN_PASSWORD no definida'
-    },
-    cors: {
-      allowedOrigin: process.env.ALLOWED_ORIGIN || null,
-      note: process.env.ALLOWED_ORIGIN
-        ? undefined
-        : 'Sin ALLOWED_ORIGIN definido: se acepta cualquier origen (solo recomendable en desarrollo).'
-    },
-    publicApiUrl: publicApiUrl || null
-  });
 });
 
 // URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
