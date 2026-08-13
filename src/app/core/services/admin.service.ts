@@ -96,7 +96,14 @@ export interface Diagnostico {
   checkedAt: string;
   db: DiagnosticoCheck & { hasDatabaseUrl: boolean };
   wompi: DiagnosticoCheck & { mode?: string };
-  smtp: DiagnosticoCheck & { configured: boolean; host: string | null; port: number; user: string | null; secure: string };
+  smtp: DiagnosticoCheck & {
+    configured: boolean;
+    host: string | null;
+    port: number;
+    portConfigurado?: number;
+    user: string | null;
+    secure: string;
+  };
   admin: DiagnosticoCheck;
   cors: { allowedOrigin: string | null; note?: string };
   publicApiUrl: string | null;
@@ -220,6 +227,14 @@ export class AdminService {
   /** Prueba en vivo la BD, Wompi, SMTP, admin y CORS del backend actual (sin reiniciar el servidor). */
   getDiagnostico(): Observable<Diagnostico | null> {
     return this.http.get<Diagnostico>(`${this.base}/api/admin/diagnostico`);
+  }
+
+  /** Envía un correo real de prueba. Si `email` va vacío, el backend usa el propio buzón remitente. */
+  probarCorreo(email = ''): Observable<{ ok: boolean; to: string; port?: number }> {
+    return this.http.post<{ ok: boolean; to: string; port?: number }>(
+      `${this.base}/api/admin/probar-correo`,
+      { email }
+    );
   }
 
   realizarSorteo(id: number, numero_ganador: string): Observable<SorteoGanadorResponse | null> {

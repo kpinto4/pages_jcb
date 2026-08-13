@@ -683,6 +683,25 @@
               </div>
             </div>
             <p class="muted small" *ngIf="diagnostico">Última prueba: {{ diagnostico.checkedAt | date:'short' }}</p>
+
+            <div class="prueba-correo">
+              <label for="correo-prueba">Enviar correo de prueba</label>
+              <div class="prueba-correo-row">
+                <input
+                  id="correo-prueba"
+                  type="email"
+                  name="correoPrueba"
+                  placeholder="tucorreo@ejemplo.com"
+                  [(ngModel)]="correoPrueba"
+                >
+                <button type="button" class="btn-outline" [disabled]="enviandoCorreoPrueba" (click)="probarCorreo()">
+                  {{ enviandoCorreoPrueba ? 'Enviando...' : 'Enviar prueba' }}
+                </button>
+              </div>
+              <small class="field-hint">Si lo dejas vacío, se envía al propio buzón remitente.</small>
+              <p class="config-ok" *ngIf="resultadoCorreoPrueba">{{ resultadoCorreoPrueba }}</p>
+              <p class="error-msg" *ngIf="errorCorreoPrueba">{{ errorCorreoPrueba }}</p>
+            </div>
           </article>
 
           <article class="admin-card">

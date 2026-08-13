@@ -119,6 +119,11 @@ export class AdminComponent implements OnInit, OnDestroy {
   diagnosticando = false;
   errorDiagnostico = '';
 
+  correoPrueba = '';
+  enviandoCorreoPrueba = false;
+  resultadoCorreoPrueba = '';
+  errorCorreoPrueba = '';
+
   ganadorActual: SorteoGanadorResponse | null = null;
 
   /** Flujo realizar con número de lotería: sorteo elegido, número ingresado, resultado de consultar */
@@ -200,10 +205,29 @@ export class AdminComponent implements OnInit, OnDestroy {
         if (err?.status === 401) this.on401();
         else if (err?.status === 504 || err?.status === 0) {
           this.errorDiagnostico =
-            'El servidor tardó demasiado en responder (timeout). Suele ser la prueba SMTP. Vuelve a intentar tras desplegar el backend con el timeout de correo.';
+            'El servidor tardó demasiado en responder (504). El backend desplegado todavía es la versión anterior: vuelve a desplegarlo y reinícialo.';
         } else {
           this.errorDiagnostico = err?.error?.error || 'No se pudo obtener el diagnóstico del servidor.';
         }
+      }
+    });
+  }
+
+  /** Envía un correo real para confirmar que los comprobantes llegan. */
+  probarCorreo(): void {
+    this.enviandoCorreoPrueba = true;
+    this.resultadoCorreoPrueba = '';
+    this.errorCorreoPrueba = '';
+    this.adminService.probarCorreo(this.correoPrueba).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.enviandoCorreoPrueba = false;
+        this.resultadoCorreoPrueba = `Correo enviado a ${r.to}. Revisa la bandeja (y spam).`;
+        this.ejecutarDiagnostico();
+      },
+      error: (err) => {
+        this.enviandoCorreoPrueba = false;
+        if (err?.status === 401) this.on401();
+        else this.errorCorreoPrueba = err?.error?.error || 'No se pudo enviar el correo de prueba.';
       }
     });
   }

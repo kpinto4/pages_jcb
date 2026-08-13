@@ -16,11 +16,13 @@ import { randomUUID, createHash } from 'crypto';
 let enviarComprobanteTrasPago = async () => {};
 let verificarSmtp = async () => ({ configured: false, ok: false, error: 'Módulo de correo no cargado' });
 let estadoSmtp = () => ({ configured: false, ok: false, error: 'Módulo de correo no cargado' });
+let enviarCorreoPrueba = async () => ({ ok: false, error: 'Módulo de correo no cargado' });
 try {
   const emailModule = await import('./email.js');
   const { enviarComprobante } = emailModule;
   verificarSmtp = emailModule.verificarSmtp;
   estadoSmtp = emailModule.estadoSmtp;
+  enviarCorreoPrueba = emailModule.enviarCorreoPrueba;
   enviarComprobanteTrasPago = async (orderId) => {
     const order = await db?.prepare('SELECT email, nombre, total_cents, currency FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
     if (!order?.email) return;
@@ -292,7 +294,9 @@ app.get('/api/admin/diagnostico', async (req, res) => {
       dbError = e?.message || String(e);
     }
 
-    await verificarSmtp();
+    // La comprobación SMTP se hace con timeout propio: si el proveedor no responde,
+    // igual devolvemos el resto del diagnóstico en vez de dejar colgada la petición.
+    await verificarSmtp().catch(() => {});
     const smtp = estadoSmtp();
 
     res.json({
@@ -308,6 +312,7 @@ app.get('/api/admin/diagnostico', async (req, res) => {
         configured: smtp.configured,
         host: smtp.host,
         port: smtp.port,
+        portConfigurado: smtp.portConfigurado,
         user: smtp.user,
         secure: smtp.secure,
         error: smtp.ok ? undefined : smtp.error
@@ -327,6 +332,21 @@ app.get('/api/admin/diagnostico', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/admin/diagnostico:', err);
     res.status(500).json({ error: 'No se pudo completar el diagnóstico', detail: err?.message });
+  }
+});
+
+// ----- ADMIN: enviar un correo real de prueba (confirma que los comprobantes salen) -----
+app.post('/api/admin/probar-correo', async (req, res) => {
+  try {
+    const destino = (req.body?.email || '').trim();
+    const resultado = await enviarCorreoPrueba(destino);
+    if (!resultado.ok) {
+      return res.status(400).json({ error: resultado.error, to: resultado.to });
+    }
+    res.json(resultado);
+  } catch (err) {
+    console.error('Error POST /api/admin/probar-correo:', err);
+    res.status(500).json({ error: err?.message || 'No se pudo enviar el correo de prueba' });
   }
 });
 

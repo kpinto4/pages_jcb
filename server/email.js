@@ -5,33 +5,43 @@
 import nodemailer from 'nodemailer';
 
 const host = (process.env.SMTP_HOST || '').trim();
-const port = parseInt(process.env.SMTP_PORT || '465', 10);
+const portConfigurado = parseInt(process.env.SMTP_PORT || '465', 10);
 const user = (process.env.SMTP_USER || '').trim();
 const pass = (process.env.SMTP_PASS || '').replace(/^\s+|\s+$/g, '');
 const configurado = !!(host && user && pass);
-const useSsl = port === 465;
 
-let transporter = null;
-if (configurado) {
-  try {
-    transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: useSsl,
-      requireTLS: !useSsl,
-      auth: { user, pass },
-      tls: { servername: host, minVersion: 'TLSv1.2' },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000
-    });
-  } catch (e) {
-    console.warn('Email: error configurando SMTP:', e.message);
-  }
+/** Tiempo máximo de cualquier operación SMTP: la petición HTTP nunca debe quedar colgada esperando al proveedor. */
+const SMTP_TIMEOUT_MS = 7000;
+
+/**
+ * Puertos a intentar: el configurado primero y el alternativo después.
+ * Muchos VPS bloquean la salida por 465 pero permiten 587 (o al revés).
+ */
+const puertosAIntentar = portConfigurado === 465 ? [465, 587] : [portConfigurado, 465];
+
+function crearTransporter(port) {
+  const secure = port === 465;
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user, pass },
+    tls: { servername: host, minVersion: 'TLSv1.2' },
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS
+  });
 }
 
-/** Último resultado de `transporter.verify()`, para mostrar en /api/admin/diagnostico sin reiniciar el servidor. */
+/** Transporter activo: el del primer puerto que autenticó correctamente. */
+let transporter = configurado ? crearTransporter(portConfigurado) : null;
+let portActivo = portConfigurado;
+
+/** Último resultado de la comprobación, para responder /api/admin/diagnostico sin volver a conectar. */
 let lastCheck = { checkedAt: null, ok: null, error: null };
+/** Comprobación en curso: evita lanzar varias conexiones simultáneas al pulsar el botón repetidas veces. */
+let checkEnCurso = null;
 
 function withTimeout(promise, ms, message) {
   let timer;
@@ -41,49 +51,114 @@ function withTimeout(promise, ms, message) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Prueba la conexión/autenticación SMTP ahora mismo (no envía correo). Cachea el resultado. */
-export async function verificarSmtp() {
-  if (!configurado || !transporter) {
-    lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: 'SMTP no configurado (faltan SMTP_HOST, SMTP_USER o SMTP_PASS)' };
-    return lastCheck;
+/** Traduce el fallo de nodemailer a algo accionable para quien administra el sitio. */
+function explicarError(e, port) {
+  const raw = e?.response || e?.message || String(e);
+  if (/\b535\b/.test(raw)) {
+    return `535: el servidor rechazó usuario o contraseña (${user}). Revisa SMTP_USER y SMTP_PASS.`;
   }
-  try {
-    await withTimeout(
-      transporter.verify(),
-      10000,
-      `Timeout al conectar con ${host}:${port}. El servidor no alcanzó SpaceMail (firewall o red).`
-    );
-    lastCheck = { checkedAt: new Date().toISOString(), ok: true, error: null };
-  } catch (e) {
-    lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: e?.response || e?.message || String(e) };
+  if (e?.code === 'ETIMEDOUT' || e?.code === 'ESOCKET' || /timeout/i.test(raw)) {
+    return `No se pudo conectar a ${host}:${port} (timeout). El servidor no tiene salida a ese puerto.`;
   }
-  return lastCheck;
+  if (e?.code === 'ECONNREFUSED') {
+    return `Conexión rechazada por ${host}:${port}.`;
+  }
+  return raw;
 }
 
-/** Estado actual para diagnóstico (config + último chequeo, sin exponer la contraseña). */
+async function intentarPuerto(port) {
+  const t = port === portActivo && transporter ? transporter : crearTransporter(port);
+  await withTimeout(t.verify(), SMTP_TIMEOUT_MS + 1000, `Timeout al conectar con ${host}:${port}.`);
+  return t;
+}
+
+/** Prueba conexión y autenticación (no envía correo). Cachea el resultado y fija el puerto que funcione. */
+export async function verificarSmtp() {
+  if (!configurado) {
+    lastCheck = {
+      checkedAt: new Date().toISOString(),
+      ok: false,
+      error: 'SMTP no configurado (faltan SMTP_HOST, SMTP_USER o SMTP_PASS)'
+    };
+    return lastCheck;
+  }
+  if (checkEnCurso) return checkEnCurso;
+
+  checkEnCurso = (async () => {
+    const errores = [];
+    for (const port of puertosAIntentar) {
+      try {
+        transporter = await intentarPuerto(port);
+        portActivo = port;
+        lastCheck = { checkedAt: new Date().toISOString(), ok: true, error: null };
+        return lastCheck;
+      } catch (e) {
+        errores.push(explicarError(e, port));
+        // Con credenciales rechazadas no tiene sentido probar el otro puerto.
+        if (/\b535\b/.test(String(e?.response || e?.message))) break;
+      }
+    }
+    lastCheck = { checkedAt: new Date().toISOString(), ok: false, error: errores.join(' | ') };
+    return lastCheck;
+  })().finally(() => {
+    checkEnCurso = null;
+  });
+
+  return checkEnCurso;
+}
+
+/** Estado actual para diagnóstico (configuración + último chequeo, sin exponer la contraseña). */
 export function estadoSmtp() {
   return {
     configured: configurado,
     host: host || null,
-    port,
+    port: portActivo,
+    portConfigurado,
     user: user || null,
-    secure: useSsl ? 'SSL' : 'STARTTLS',
+    secure: portActivo === 465 ? 'SSL' : 'STARTTLS',
     ...lastCheck
   };
+}
+
+/** Envía un correo real de prueba para confirmar que los comprobantes van a salir. */
+export async function enviarCorreoPrueba(destino) {
+  const to = (destino || '').trim() || user;
+  if (!configurado || !transporter) {
+    return { ok: false, error: 'SMTP no configurado (faltan SMTP_HOST, SMTP_USER o SMTP_PASS)' };
+  }
+  const check = await verificarSmtp();
+  if (!check.ok) return { ok: false, error: check.error };
+
+  try {
+    const info = await withTimeout(
+      transporter.sendMail({
+        from: remitente(),
+        to,
+        subject: 'Prueba de correo — Juego de la Ciudad Bonita',
+        text:
+          'Este es un correo de prueba enviado desde el panel de administración.\n' +
+          'Si lo recibiste, los comprobantes de compra ya funcionan.'
+      }),
+      SMTP_TIMEOUT_MS + 3000,
+      'Timeout al enviar el correo de prueba.'
+    );
+    return { ok: true, to, messageId: info?.messageId, port: portActivo };
+  } catch (e) {
+    return { ok: false, to, error: explicarError(e, portActivo) };
+  }
+}
+
+function remitente() {
+  const raw = (process.env.EMAIL_FROM || user || 'no_reply@inversionesjcb.online').trim();
+  return raw.includes('<') ? raw : `Juego de la Ciudad Bonita <${raw}>`;
 }
 
 if (configurado) {
   verificarSmtp().then((r) => {
     if (r.ok) {
-      console.log(`SMTP listo: ${user} @ ${host}:${port} (${useSsl ? 'SSL' : 'STARTTLS'})`);
+      console.log(`SMTP listo: ${user} @ ${host}:${portActivo} (${portActivo === 465 ? 'SSL' : 'STARTTLS'})`);
     } else {
-      console.warn(`SMTP no autentica (${user} @ ${host}:${port}): ${r.error}`);
-      if (/\b535\b/.test(String(r.error))) {
-        console.warn(
-          '  535 = el servidor rechazó usuario o contraseña. Revisa SMTP_USER y SMTP_PASS en server/.env ' +
-          '(es el único .env que carga el backend) y que el buzón tenga IMAP/SMTP/POP3 habilitado.'
-        );
-      }
+      console.warn(`SMTP no disponible (${user} @ ${host}): ${r.error}`);
     }
   });
 }
@@ -97,8 +172,7 @@ export async function enviarComprobante(order, items = []) {
   const nombre = (order?.nombre || '').trim() || 'Cliente';
   const total = Number(order?.total_cents || 0) / 100;
   const moneda = ((order?.currency || 'cop') + '').toUpperCase();
-  const fromRaw = (process.env.EMAIL_FROM || user || 'no_reply@inversionesjcb.online').trim();
-  const fromAddr = fromRaw.includes('<') ? fromRaw : `Juego de la Ciudad Bonita <${fromRaw}>`;
+  const fromAddr = remitente();
 
   const numerosRows = items.length > 0
     ? items.map(i => `<tr><td style="padding:10px 16px;border-bottom:1px solid #e5e7eb;font-size:16px;font-weight:600;color:#166534;">${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</td></tr>`).join('')
