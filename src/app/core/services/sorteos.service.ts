@@ -7,6 +7,7 @@ export interface Sorteo {
   id: number;
   nombre: string;
   fecha: string;
+  hora_sorteo?: string | null;
   descripcion?: string | null;
   tipo: string;
   estado: string;
@@ -15,6 +16,10 @@ export interface Sorteo {
   numero_ganador_a?: string | null;
   numero_ganador_b?: string | null;
   numeros_beneficiados?: string | null;
+  /** Solo en `principal` (respuesta de /api/sorteos/home): instante ISO en que cierran las ventas. */
+  horaCierreVentas?: string | null;
+  /** Solo en `principal`: true si ya pasó la hora de cierre de ventas de hoy. */
+  ventasCerradas?: boolean;
 }
 
 export interface AnticipadoHome {

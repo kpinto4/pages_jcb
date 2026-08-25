@@ -42,6 +42,7 @@ export interface Sorteo {
   id: number;
   nombre: string;
   fecha: string;
+  hora_sorteo?: string | null;
   descripcion: string | null;
   tipo: string;
   estado: string;
@@ -98,6 +99,8 @@ export interface Diagnostico {
   wompi: DiagnosticoCheck & { mode?: string };
   smtp: DiagnosticoCheck & {
     configured: boolean;
+    /** Transporte activo: 'resend' | 'brevo' | 'smtp'. Null si no hay correo configurado. */
+    provider: string | null;
     host: string | null;
     port: number;
     portConfigurado?: number;
@@ -158,13 +161,13 @@ export class AdminService {
     );
   }
 
-  createSorteo(body: { nombre: string; fecha: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string }): Observable<Sorteo | null> {
+  createSorteo(body: { nombre: string; fecha: string; hora_sorteo?: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string }): Observable<Sorteo | null> {
     return this.http.post<Sorteo>(`${this.base}/api/admin/sorteos`, body).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
   }
 
-  updateSorteo(id: number, body: Partial<{ nombre: string; fecha: string; descripcion: string; premio_descripcion: string; imagen_url: string; numeros_beneficiados: string }>): Observable<Sorteo | null> {
+  updateSorteo(id: number, body: Partial<{ nombre: string; fecha: string; hora_sorteo: string; descripcion: string; premio_descripcion: string; imagen_url: string; numeros_beneficiados: string }>): Observable<Sorteo | null> {
     return this.http.patch<Sorteo>(`${this.base}/api/admin/sorteos/${id}`, body).pipe(
       catchError((err) => throwError(() => err))
     );

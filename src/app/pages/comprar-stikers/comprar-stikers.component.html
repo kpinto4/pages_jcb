@@ -46,8 +46,14 @@
     </ng-container>
 
     <!-- Sin sorteo activo: no hay stikers disponibles -->
-    <div *ngIf="!cargandoStikers && stikers.length === 0" class="sin-sorteo">
+    <div *ngIf="!cargandoStikers && stikers.length === 0 && !ventasCerradas" class="sin-sorteo">
       <p class="sin-sorteo-msg">No hay sorteos activos. Próximamente tendremos más.</p>
+      <a routerLink="/" class="btn-outline">Volver al inicio</a>
+    </div>
+
+    <!-- Ventas cerradas: hoy juega el sorteo -->
+    <div *ngIf="!cargandoStikers && ventasCerradas" class="sin-sorteo">
+      <p class="sin-sorteo-msg">🔒 Ventas cerradas. El sorteo de hoy está por jugar (o ya jugó); vuelve pronto para el próximo.</p>
       <a routerLink="/" class="btn-outline">Volver al inicio</a>
     </div>
 

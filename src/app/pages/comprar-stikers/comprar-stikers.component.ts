@@ -56,6 +56,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
 
   stikers: Stiker[] = [];
   cargandoStikers = true;
+  /** true cuando hay sorteo activo pero ya cerraron las ventas (hora_sorteo - 1h). */
+  ventasCerradas = false;
 
   cliente = {
     nombre: '',
@@ -99,6 +101,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       stikers: this.paymentService.getStikers()
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: ({ home: data, stikers: res }) => {
+        this.ventasCerradas = !!data?.principal?.ventasCerradas;
         if (!data?.principal) {
           this.stikers = [];
         } else if (res?.stikers && res.stikers.length > 0) {

@@ -51,12 +51,15 @@
         Vuelve pronto para participar en el próximo sorteo.
       </p>
 
-      <!-- BOTÓN COMPRAR: solo activo si hay sorteo -->
-      <a *ngIf="principal" routerLink="/comprar-stikers" class="btn-comprar">
+      <!-- BOTÓN COMPRAR: solo activo si hay sorteo y no cerraron las ventas por hora -->
+      <a *ngIf="principal && !ventasCerradas" routerLink="/comprar-stikers" class="btn-comprar">
         🎟️ Comprar Stikers
       </a>
       <span *ngIf="!principal" class="btn-comprar btn-comprar-disabled" aria-disabled="true">
         🎟️ Comprar Stikers (próximamente)
+      </span>
+      <span *ngIf="principal && ventasCerradas" class="btn-comprar btn-comprar-disabled" aria-disabled="true">
+        🔒 Ventas cerradas — el sorteo está por jugar
       </span>
 
       <!-- Contador: solo si hay sorteo -->

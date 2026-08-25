@@ -28,6 +28,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
   // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
+  /** true cuando ya pasó la hora de cierre de ventas del sorteo de hoy (hora_sorteo - 1h). */
+  ventasCerradas = false;
   /** Evita mostrar “próximamente” antes de que responda el API */
   cargandoHero = true;
   /** Carga de la imagen del premio (spinner hasta load/error) */
@@ -76,6 +78,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
           this.principal = data.principal ?? null;
           if (!this.principal) return;
 
+          this.ventasCerradas = !!this.principal.ventasCerradas;
           this.heroImgLoaded = false;
           this.heroImgFailed = false;
           if (this.principal.imagen_url) {
@@ -83,7 +86,7 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
           } else {
             this.heroImageUrl = 'assets/img/premio-mayor.jpg';
           }
-          this.startCountdownFromDate(this.principal.fecha);
+          this.startCountdown(this.principal.fecha, this.principal.hora_sorteo);
         },
         error: () => {
           this.principal = null;
@@ -101,13 +104,20 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
     });
   }
 
-  private startCountdownFromDate(dateIso: string): void {
+  private startCountdown(dateIso: string, horaSorteo?: string | null): void {
     if (this.countdownIntervalId) {
       clearInterval(this.countdownIntervalId);
     }
-    // Normalizar "YYYY-MM-DD" a medianoche hora local para evitar bug UTC off-by-one en Colombia
-    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? `${dateIso}T00:00:00` : dateIso;
-    const targetDate = new Date(normalized).getTime();
+    // Si hay hora de sorteo, la cuenta regresiva apunta al momento exacto del sorteo (hora Colombia,
+    // UTC-5 fijo). Si no, cae a medianoche de la fecha (comportamiento anterior).
+    let targetDate: number;
+    if (horaSorteo && /^\d{2}:\d{2}$/.test(horaSorteo) && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+      targetDate = new Date(`${dateIso}T${horaSorteo}:00-05:00`).getTime();
+    } else {
+      // Normalizar "YYYY-MM-DD" a medianoche hora local para evitar bug UTC off-by-one en Colombia
+      const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? `${dateIso}T00:00:00` : dateIso;
+      targetDate = new Date(normalized).getTime();
+    }
     if (!targetDate) return;
 
     this.updateCountdown(targetDate);

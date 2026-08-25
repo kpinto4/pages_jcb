@@ -88,6 +88,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   nuevoSorteo = {
     nombre: '',
     fecha: '',
+    hora_sorteo: '',
     descripcion: '',
     premio_descripcion: '',
     imagen_url: ''
@@ -98,7 +99,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   eliminandoSorteoId: number | null = null;
 
   editSorteoId: number | null = null;
-  editForm: { nombre: string; fecha: string; premio_descripcion: string; numeros_beneficiados: string; imagen_url: string } = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
+  editForm: { nombre: string; fecha: string; hora_sorteo: string; premio_descripcion: string; numeros_beneficiados: string; imagen_url: string } = { nombre: '', fecha: '', hora_sorteo: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
   guardandoEditId: number | null = null;
   /** Archivos de foto seleccionados por sorteo terminado (key = sorteo id) */
   fotoGanadorFiles: { [id: number]: File } = {};
@@ -455,6 +456,10 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.error = 'Es obligatoria la imagen del premio (URL o subir archivo) para el hero.';
       return;
     }
+    if (!this.nuevoSorteo.hora_sorteo?.trim()) {
+      this.error = 'Es obligatoria la hora del sorteo: las ventas se cierran automáticamente 1 hora antes.';
+      return;
+    }
     this.error = '';
     this.guardandoSorteo = true;
 
@@ -462,6 +467,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.adminService.createSorteo({
         nombre: this.nuevoSorteo.nombre.trim(),
         fecha: this.nuevoSorteo.fecha.trim(),
+        hora_sorteo: this.nuevoSorteo.hora_sorteo.trim(),
         descripcion: this.nuevoSorteo.descripcion.trim() || undefined,
         tipo: 'mayor',
         premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined,
@@ -471,7 +477,7 @@ export class AdminComponent implements OnInit, OnDestroy {
           this.guardandoSorteo = false;
           if (s) {
             this.cargarSorteos();
-            this.nuevoSorteo = { nombre: '', fecha: '', descripcion: '', premio_descripcion: '', imagen_url: '' };
+            this.nuevoSorteo = { nombre: '', fecha: '', hora_sorteo: '', descripcion: '', premio_descripcion: '', imagen_url: '' };
             this.imagenFile = null;
             this.error = '';
           } else {
@@ -515,6 +521,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.editForm = {
       nombre: s.nombre,
       fecha: s.fecha,
+      hora_sorteo: s.hora_sorteo || '',
       premio_descripcion: s.premio_descripcion || '',
       numeros_beneficiados: s.numeros_beneficiados || '',
       imagen_url: s.imagen_url || ''
@@ -527,6 +534,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     const body = {
       nombre: this.editForm.nombre.trim(),
       fecha: this.editForm.fecha.trim(),
+      hora_sorteo: this.editForm.hora_sorteo.trim(),
       premio_descripcion: this.editForm.premio_descripcion.trim() || undefined,
       numeros_beneficiados: this.editForm.numeros_beneficiados.trim() || undefined,
       imagen_url: this.editForm.imagen_url.trim() || undefined
@@ -549,7 +557,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   cancelarEdicion(): void {
     this.editSorteoId = null;
-    this.editForm = { nombre: '', fecha: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
+    this.editForm = { nombre: '', fecha: '', hora_sorteo: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
     this.fotoGanadorFiles = {};
   }
 

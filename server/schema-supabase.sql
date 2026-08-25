@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS sorteos (
   id SERIAL PRIMARY KEY,
   nombre TEXT NOT NULL,
   fecha TEXT NOT NULL,
+  hora_sorteo TEXT,
   descripcion TEXT,
   tipo TEXT NOT NULL DEFAULT 'anticipado',
   estado TEXT NOT NULL DEFAULT 'programado',

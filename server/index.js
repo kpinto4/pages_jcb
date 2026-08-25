@@ -46,6 +46,9 @@ function toJSONSafe(obj) {
   return obj;
 }
 
+// Solo informativo en /api/admin/diagnostico; ya no se usa para construir URLs de imagen (ver upload-image).
+const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
+
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -90,6 +93,29 @@ const maxStickersPerOrder = Math.min(100, Math.max(1, Number.parseInt(process.en
 /** Fecha calendario en Colombia (YYYY-MM-DD) para sorteos activos. */
 function fechaHoyColombia() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+/** Minutos antes de la hora del sorteo en que se cierran las ventas de stikers. */
+const ventaCierraMinutosAntes = 60;
+
+/**
+ * Instante (epoch ms) en que cierran las ventas para un sorteo con `fecha` ('YYYY-MM-DD')
+ * y `horaSorteo` ('HH:MM', hora de Colombia). Devuelve null si `horaSorteo` no está definida
+ * (sorteo sin hora configurada: no se aplica cierre por hora, solo por fecha/estado).
+ */
+function horaCierreVentasMs(fecha, horaSorteo) {
+  if (!fecha || !horaSorteo || !/^\d{2}:\d{2}$/.test(horaSorteo)) return null;
+  // Colombia no observa horario de verano: UTC-5 todo el año.
+  const sorteoMs = new Date(`${fecha}T${horaSorteo}:00-05:00`).getTime();
+  if (!Number.isFinite(sorteoMs)) return null;
+  return sorteoMs - ventaCierraMinutosAntes * 60 * 1000;
+}
+
+/** true si el sorteo es hoy y ya pasó la hora de cierre de ventas (hora_sorteo - 60 min). */
+function ventasCerradasPorHora(sorteo) {
+  const cierre = horaCierreVentasMs(sorteo?.fecha, sorteo?.hora_sorteo);
+  if (cierre === null) return false;
+  return Date.now() >= cierre;
 }
 
 /** Rate limit en memoria por clave (IP + ruta). */
@@ -183,7 +209,7 @@ const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 // CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
 const corsOrigin = process.env.ALLOWED_ORIGIN || true;
 app.use(cors({ origin: corsOrigin, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 // Si la DB no cargó, solo permitir health y admin/login
 app.use((req, res, next) => {
   if (!db && (req.path !== '/api/health' || req.method !== 'GET') && !(req.path === '/api/admin/login' && req.method === 'POST')) {
@@ -196,11 +222,9 @@ app.use((req, res, next) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, randomUUID() + (path.extname(file.originalname) || '.jpg').toLowerCase())
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Memoria (no disco): el disco del contenedor es efímero y se pierde en cada redespliegue,
+// lo que dejaba imágenes ya subidas devolviendo 404. La imagen se guarda como data URI en la BD.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ----- RAÍZ (para que no salga "Cannot GET /" al abrir la URL del servidor) -----
 app.get('/', (req, res) => {
@@ -310,6 +334,7 @@ app.get('/api/admin/diagnostico', async (req, res) => {
       smtp: {
         ok: !!smtp.ok,
         configured: smtp.configured,
+        provider: smtp.provider,
         host: smtp.host,
         port: smtp.port,
         portConfigurado: smtp.portConfigurado,
@@ -350,15 +375,14 @@ app.post('/api/admin/probar-correo', async (req, res) => {
   }
 });
 
-// URL pública del backend (para devolver URLs de /uploads que el front pueda cargar). En despliegue pon ej. http://n1.voriamtechnologies.com:3012
-const publicApiUrl = (process.env.PUBLIC_API_URL || '').trim();
-
 // ----- ADMIN: subir imagen (para premio mayor) -----
+// Se guarda como data URI (base64) en la BD, no en el disco del contenedor: el disco es
+// efímero y se pierde en cada redespliegue, dejando imágenes ya subidas devolviendo 404.
 app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se envió ningún archivo. Usa el campo "image".' });
-    const baseUrl = publicApiUrl || (req.protocol + '://' + req.get('host'));
-    const url = baseUrl + '/uploads/' + req.file.filename;
+    const mime = req.file.mimetype || 'image/jpeg';
+    const url = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
     res.json({ url });
   } catch (err) {
     console.error('Error upload imagen:', err);
@@ -436,16 +460,22 @@ async function hayPremioMayorActivo() {
   return !!(await getPremioMayorActivoId());
 }
 
-/** Devuelve el id del premio mayor activo o null. Los stikers de cada campaña se asocian a este sorteo. */
+/**
+ * Devuelve el id del premio mayor activo o null. Los stikers de cada campaña se asocian a este sorteo.
+ * Si el sorteo es hoy y ya pasó su hora de cierre de ventas (hora_sorteo - 60 min), se considera inactivo
+ * aunque siga 'programado': no es justo seguir vendiendo mientras (o después de) que juega la lotería.
+ */
 async function getPremioMayorActivoId() {
   const hoy = fechaHoyColombia();
   const row = await db.prepare(`
-    SELECT id FROM sorteos
+    SELECT id, fecha, hora_sorteo FROM sorteos
     WHERE tipo = 'mayor' AND estado = 'programado'
     AND (${dateCmpEq} OR ${dateCmpGt})
     LIMIT 1
   `).get(hoy, hoy);
-  return row ? row.id : null;
+  if (!row) return null;
+  if (ventasCerradasPorHora(row)) return null;
+  return row.id;
 }
 
 /** Precio por stiker en centavos (desde config). */
@@ -1262,7 +1292,7 @@ app.patch('/api/admin/config', async (req, res) => {
 
 // ----- SORTEOS (público y admin) -----
 
-const sorteosSelect = 'id, nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numero_ganador_a, numero_ganador_b, numeros_beneficiados, created_at';
+const sorteosSelect = 'id, nombre, fecha, hora_sorteo, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numero_ganador_a, numero_ganador_b, numeros_beneficiados, created_at';
 
 app.get('/api/sorteos', async (req, res) => {
   try {
@@ -1335,8 +1365,18 @@ app.get('/api/sorteos/home', async (req, res) => {
       LIMIT 6
     `).all();
 
+    let principalPublico = principal ? sorteoPublico(principal) : null;
+    if (principalPublico) {
+      const cierreMs = horaCierreVentasMs(principal.fecha, principal.hora_sorteo);
+      principalPublico = {
+        ...principalPublico,
+        horaCierreVentas: cierreMs !== null ? new Date(cierreMs).toISOString() : null,
+        ventasCerradas: ventasCerradasPorHora(principal)
+      };
+    }
+
     res.json(toJSONSafe({
-      principal: principal ? sorteoPublico(principal) : null,
+      principal: principalPublico,
       anticipadosActuales,
       mayoresRealizados: mayoresRealizados.map(sorteoPublico)
     }));
@@ -1504,12 +1544,15 @@ app.get('/api/admin/sorteos', async (req, res) => {
 
 app.post('/api/admin/sorteos', async (req, res) => {
   try {
-    const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion, imagen_url, numeros_beneficiados } = req.body;
+    const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion, imagen_url, numeros_beneficiados, hora_sorteo } = req.body;
     if (!nombre || !fecha) {
       return res.status(400).json({ error: 'Faltan nombre o fecha' });
     }
     if (tipo === 'mayor' && !(imagen_url && String(imagen_url).trim())) {
       return res.status(400).json({ error: 'Para Premio Mayor es obligatoria la URL de la imagen del premio (para el hero).' });
+    }
+    if (tipo === 'mayor' && !(hora_sorteo && /^\d{2}:\d{2}$/.test(String(hora_sorteo).trim()))) {
+      return res.status(400).json({ error: 'Para Premio Mayor es obligatoria la hora del sorteo (HH:MM, hora de Colombia): las ventas se cierran automáticamente 1 hora antes.' });
     }
 
     if ((tipo || '').toLowerCase() === 'mayor') {
@@ -1523,11 +1566,12 @@ app.post('/api/admin/sorteos', async (req, res) => {
 
     const runTx = db.transaction(async (tx) => {
       const result = await tx.prepare(`
-        INSERT INTO sorteos (nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numeros_beneficiados)
-        VALUES (?, ?, ?, ?, 'programado', ?, ?, NULL, ?)
+        INSERT INTO sorteos (nombre, fecha, hora_sorteo, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numeros_beneficiados)
+        VALUES (?, ?, ?, ?, ?, 'programado', ?, ?, NULL, ?)
       `).run(
         nombre,
         fecha,
+        (tipo === 'mayor' ? String(hora_sorteo).trim() : null) || null,
         descripcion || '',
         tipo,
         premio_descripcion || null,
@@ -1575,7 +1619,7 @@ app.post('/api/admin/sorteos', async (req, res) => {
 
 app.patch('/api/admin/sorteos/:id', async (req, res) => {
   try {
-    const { nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, numeros_beneficiados } = req.body;
+    const { nombre, fecha, descripcion, tipo, estado, premio_descripcion, imagen_url, numeros_beneficiados, hora_sorteo } = req.body;
     const id = req.params.id;
     const current = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
     if (!current) return res.status(404).json({ error: 'Sorteo no encontrado' });
@@ -1584,6 +1628,13 @@ app.patch('/api/admin/sorteos/:id', async (req, res) => {
     const params = [];
     if (nombre !== undefined) { updates.push('nombre = ?'); params.push(nombre); }
     if (fecha !== undefined) { updates.push('fecha = ?'); params.push(fecha); }
+    if (hora_sorteo !== undefined) {
+      const val = String(hora_sorteo || '').trim();
+      if (val && !/^\d{2}:\d{2}$/.test(val)) {
+        return res.status(400).json({ error: 'Hora del sorteo inválida (usa formato HH:MM).' });
+      }
+      updates.push('hora_sorteo = ?'); params.push(val || null);
+    }
     if (descripcion !== undefined) { updates.push('descripcion = ?'); params.push(descripcion); }
     if (tipo !== undefined) { updates.push('tipo = ?'); params.push(tipo); }
     if (estado !== undefined) { updates.push('estado = ?'); params.push(estado); }

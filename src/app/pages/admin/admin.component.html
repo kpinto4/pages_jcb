@@ -357,6 +357,11 @@
                 <input type="date" [(ngModel)]="nuevoSorteo.fecha">
               </div>
               <div class="form-row">
+                <label>Hora del sorteo (hora Colombia)</label>
+                <p class="muted small">Las ventas se cierran automáticamente 1 hora antes (así no se compra mientras juega la lotería).</p>
+                <input type="time" [(ngModel)]="nuevoSorteo.hora_sorteo" name="hora_sorteo">
+              </div>
+              <div class="form-row">
                 <input type="text" placeholder="Premio (ej. Moto 0 KM, Bono $500.000 COP)" [(ngModel)]="nuevoSorteo.premio_descripcion">
               </div>
               <div class="form-row">
@@ -390,6 +395,7 @@
                 <div class="sorteo-info" *ngIf="editSorteoId !== s.id">
                   <strong>{{ s.nombre }}</strong>
                   <span class="sorteo-fecha">{{ formatDate(s.fecha) }}</span>
+                  <span class="sorteo-fecha" *ngIf="s.tipo === 'mayor'">{{ s.hora_sorteo ? ('Sorteo ' + s.hora_sorteo + ' · ventas cierran 1h antes') : 'Sin hora de sorteo (ventas no se cierran por hora)' }}</span>
                   <span class="sorteo-tipo">{{ s.tipo }}</span>
                   <span *ngIf="s.premio_descripcion" class="sorteo-premio">{{ s.premio_descripcion }}</span>
                   <span class="badge">{{ s.estado }}</span>
@@ -410,6 +416,10 @@
                   </div>
                   <div class="form-row" *ngIf="s.tipo === 'mayor'">
                     <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
+                  </div>
+                  <div class="form-row" *ngIf="s.tipo === 'mayor'">
+                    <label>Hora del sorteo (ventas cierran 1h antes)</label>
+                    <input type="time" [(ngModel)]="editForm.hora_sorteo">
                   </div>
                   <div class="edit-actions">
                     <button type="button" class="btn-primary" [disabled]="guardandoEditId === s.id" (click)="guardarEdicionSorteo()">
@@ -660,11 +670,11 @@
               <div class="diagnostico-item" [class.is-ok]="d.smtp.ok" [class.is-fail]="!d.smtp.ok">
                 <span class="diagnostico-dot" aria-hidden="true"></span>
                 <div>
-                  <strong>Correo (SMTP)</strong>
+                  <strong>Correo{{ d.smtp.provider ? ' (' + d.smtp.provider + ')' : '' }}</strong>
                   <p *ngIf="d.smtp.configured">
                     {{ d.smtp.ok ? ('Conectado: ' + d.smtp.user) : (d.smtp.error || 'No autentica') }}
                   </p>
-                  <p *ngIf="!d.smtp.configured">No configurado (SMTP_HOST / SMTP_USER / SMTP_PASS).</p>
+                  <p *ngIf="!d.smtp.configured">No configurado (RESEND_API_KEY, BREVO_API_KEY o SMTP_*).</p>
                 </div>
               </div>
               <div class="diagnostico-item" [class.is-ok]="d.admin.ok" [class.is-fail]="!d.admin.ok">
