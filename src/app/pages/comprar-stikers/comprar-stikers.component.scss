@@ -429,6 +429,9 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.25rem;
+  /* Deja libre la esquina donde flota el botón de WhatsApp (contact-fab: ~3.35rem + 1rem de margen)
+     para que no tape el botón Continuar. */
+  padding-right: calc(5.25rem + env(safe-area-inset-right));
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   background: var(--surface);
   border-top: 1px solid var(--border);
