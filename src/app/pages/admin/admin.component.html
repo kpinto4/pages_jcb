@@ -366,7 +366,7 @@
               </div>
               <div class="form-row">
                 <label>Imagen del premio (hero)</label>
-                <p class="muted small">Recomendado: URL de la imagen. La subida de archivo en producción puede fallar.</p>
+                <p class="muted small">Recomendado: subir el archivo (se guarda en la base de datos, no se pierde en un redespliegue).</p>
                 <div class="imagen-opciones">
                   <input type="url" placeholder="URL de la imagen" [(ngModel)]="nuevoSorteo.imagen_url" name="imagen_url">
                   <span>o</span>
@@ -415,7 +415,13 @@
                     <input type="text" placeholder="Número bendecido (ej: 1234 o 1234-5678)" [(ngModel)]="editForm.numeros_beneficiados">
                   </div>
                   <div class="form-row" *ngIf="s.tipo === 'mayor'">
-                    <input type="url" placeholder="URL imagen" [(ngModel)]="editForm.imagen_url">
+                    <label>Imagen del premio (hero)</label>
+                    <div class="imagen-opciones">
+                      <input type="url" placeholder="URL de la imagen" [(ngModel)]="editForm.imagen_url">
+                      <span>o</span>
+                      <input type="file" accept="image/*" (change)="onEditImagenFileChange($event)">
+                      <span *ngIf="editImagenFile" class="file-name">{{ editImagenFile.name }}</span>
+                    </div>
                   </div>
                   <div class="form-row" *ngIf="s.tipo === 'mayor'">
                     <label>Hora del sorteo (ventas cierran 1h antes)</label>

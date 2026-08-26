@@ -94,6 +94,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     imagen_url: ''
   };
   imagenFile: File | null = null;
+  editImagenFile: File | null = null;
   guardandoSorteo = false;
   realizandoId: number | null = null;
   eliminandoSorteoId: number | null = null;
@@ -446,6 +447,14 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  onEditImagenFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files?.length) {
+      this.editImagenFile = input.files[0];
+      this.editForm.imagen_url = ''; // clear URL if file selected
+    }
+  }
+
   crearSorteo(): void {
     if (!this.nuevoSorteo.nombre.trim() || !this.nuevoSorteo.fecha.trim()) {
       this.error = 'Nombre y fecha son obligatorios.';
@@ -518,6 +527,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   editarSorteo(s: Sorteo): void {
     this.editSorteoId = s.id;
+    this.editImagenFile = null;
     this.editForm = {
       nombre: s.nombre,
       fecha: s.fecha,
@@ -531,32 +541,57 @@ export class AdminComponent implements OnInit, OnDestroy {
   guardarEdicionSorteo(): void {
     if (this.editSorteoId == null) return;
     this.guardandoEditId = this.editSorteoId;
-    const body = {
-      nombre: this.editForm.nombre.trim(),
-      fecha: this.editForm.fecha.trim(),
-      hora_sorteo: this.editForm.hora_sorteo.trim(),
-      premio_descripcion: this.editForm.premio_descripcion.trim() || undefined,
-      numeros_beneficiados: this.editForm.numeros_beneficiados.trim() || undefined,
-      imagen_url: this.editForm.imagen_url.trim() || undefined
-    };
-    this.adminService.updateSorteo(this.editSorteoId, body).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (updated) => {
-        if (updated) {
-          this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
+    this.error = '';
+
+    const doUpdate = (imagenUrl?: string) => {
+      const id = this.editSorteoId;
+      if (id == null) return;
+      const body = {
+        nombre: this.editForm.nombre.trim(),
+        fecha: this.editForm.fecha.trim(),
+        hora_sorteo: this.editForm.hora_sorteo.trim(),
+        premio_descripcion: this.editForm.premio_descripcion.trim() || undefined,
+        numeros_beneficiados: this.editForm.numeros_beneficiados.trim() || undefined,
+        imagen_url: imagenUrl !== undefined ? imagenUrl : (this.editForm.imagen_url.trim() || undefined)
+      };
+      this.adminService.updateSorteo(id, body).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (updated) => {
+          if (updated) {
+            this.sorteos = this.sorteos.map((x) => (x.id === updated.id ? updated : x));
+          }
+          this.cancelarEdicion();
+          this.guardandoEditId = null;
+        },
+        error: (err) => {
+          if (err?.status === 401) this.on401();
+          this.guardandoEditId = null;
+          this.error = err?.error?.error || err?.message || 'No se pudo guardar el sorteo.';
         }
-        this.cancelarEdicion();
-        this.guardandoEditId = null;
-      },
-      error: (err) => {
-        if (err?.status === 401) this.on401();
-        this.guardandoEditId = null;
-        this.error = err?.error?.error || err?.message || 'No se pudo guardar el sorteo.';
-      }
-    });
+      });
+    };
+
+    if (this.editImagenFile) {
+      this.adminService.uploadImage(this.editImagenFile).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (res) => {
+          if (res?.url) doUpdate(res.url);
+          else {
+            this.error = 'No se pudo subir la imagen. Usa la URL de la imagen en su lugar.';
+            this.guardandoEditId = null;
+          }
+        },
+        error: () => {
+          this.error = 'Error al subir la imagen. Usa la URL de la imagen en su lugar.';
+          this.guardandoEditId = null;
+        }
+      });
+    } else {
+      doUpdate();
+    }
   }
 
   cancelarEdicion(): void {
     this.editSorteoId = null;
+    this.editImagenFile = null;
     this.editForm = { nombre: '', fecha: '', hora_sorteo: '', premio_descripcion: '', numeros_beneficiados: '', imagen_url: '' };
     this.fotoGanadorFiles = {};
   }
