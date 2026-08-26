@@ -80,7 +80,7 @@
 .admin-shell {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  min-height: calc(100vh - 80px);
+  min-height: 100vh;
   background: var(--background);
 }
 

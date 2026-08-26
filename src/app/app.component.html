@@ -1,6 +1,6 @@
-<app-navbar></app-navbar>
+<app-navbar *ngIf="!isAdminRoute"></app-navbar>
 <main class="main-content">
   <router-outlet></router-outlet>
 </main>
-<app-footer></app-footer>
+<app-footer *ngIf="!isAdminRoute"></app-footer>
 <app-contact-fab />
