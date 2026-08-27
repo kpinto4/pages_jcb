@@ -317,7 +317,7 @@
                     <td>{{ o.nombre }}</td>
                     <td>{{ o.email }}</td>
                     <td>{{ o.items_count }}</td>
-                    <td>${{ formatCents(o.total_cents) }} {{ o.currency }}</td>
+                    <td>{{ formatCents(o.total_cents) }}</td>
                     <td>
                       <span class="badge" [class.paid]="o.status === 'paid'">
                         {{ o.status === 'paid' ? 'Pagado' : 'Pendiente' }}
