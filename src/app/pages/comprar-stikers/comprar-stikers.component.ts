@@ -320,6 +320,47 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     return this.seleccionados.length * this.precioStikerCents;
   }
 
+  /** Solo dígitos, 5 a 12 caracteres (cédulas colombianas típicas). */
+  private static readonly CEDULA_REGEX = /^\d{5,12}$/;
+  /** Exactamente 10 dígitos (celular colombiano, sin indicativo). */
+  private static readonly TELEFONO_REGEX = /^\d{10}$/;
+  /** Solo letras (con tildes/ñ), espacios, apóstrofes y guiones — sin números. */
+  private static readonly NOMBRE_REGEX = /^[A-Za-zÀ-ÿñÑ][A-Za-zÀ-ÿñÑ' .-]*$/;
+
+  /** Valida nombre/cédula/teléfono/correo antes de reservar o pagar. Deja el mensaje en errorPago. */
+  private validarDatosCliente(): boolean {
+    const nombre = this.cliente.nombre?.trim();
+    const ced = this.cliente.cedula?.trim();
+    const telefono = this.cliente.telefono?.trim();
+    const email = this.cliente.email?.trim();
+
+    if (nombre && !ComprarStikersComponent.NOMBRE_REGEX.test(nombre)) {
+      this.errorPago = 'El nombre no debe contener números.';
+      return false;
+    }
+    if (!ced) {
+      this.errorPago = 'El número de cédula es obligatorio para verificar tu compra.';
+      return false;
+    }
+    if (!ComprarStikersComponent.CEDULA_REGEX.test(ced)) {
+      this.errorPago = 'La cédula debe contener solo números (5 a 12 dígitos), sin letras ni espacios.';
+      return false;
+    }
+    if (telefono && !ComprarStikersComponent.TELEFONO_REGEX.test(telefono)) {
+      this.errorPago = 'El teléfono debe tener exactamente 10 dígitos (sin indicativo ni espacios).';
+      return false;
+    }
+    if (!email) {
+      this.errorPago = 'El correo electrónico es obligatorio para el pago.';
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.errorPago = 'Ingresa un correo electrónico válido.';
+      return false;
+    }
+    return true;
+  }
+
   private validarLimiteSeleccion(): boolean {
     if (this.seleccionados.length > this.maxStickersPerOrder) {
       this.errorPago = `Máximo ${this.maxStickersPerOrder} stikers por compra.`;
@@ -336,21 +377,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (this.step === 2) {
-      const ced = this.cliente.cedula?.trim();
-      const email = this.cliente.email?.trim();
-      if (!ced) {
-        this.errorPago = 'El número de cédula es obligatorio para verificar tu compra.';
-        return;
-      }
-      if (!email) {
-        this.errorPago = 'El correo electrónico es obligatorio para el pago.';
-        return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        this.errorPago = 'Ingresa un correo electrónico válido.';
-        return;
-      }
+    if (this.step === 2 && !this.validarDatosCliente()) {
+      return;
     }
 
     this.step++;
@@ -381,13 +409,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     this.errorPago = '';
     this.pagoCancelado = false;
 
-    if (!this.cliente.cedula?.trim()) {
-      this.errorPago = 'El número de cédula es obligatorio para verificar tu compra.';
-      return;
-    }
-
-    if (!this.cliente.email?.trim()) {
-      this.errorPago = 'El correo electrónico es obligatorio para el pago.';
+    if (!this.validarDatosCliente()) {
       return;
     }
 
@@ -442,12 +464,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       this.errorPago = 'Selecciona al menos un stiker.';
       return;
     }
-    if (!this.cliente.cedula?.trim()) {
-      this.errorPago = 'El número de cédula es obligatorio para verificar tu compra.';
-      return;
-    }
-    if (!this.cliente.email?.trim()) {
-      this.errorPago = 'El correo electrónico es obligatorio.';
+    if (!this.validarDatosCliente()) {
       return;
     }
     if (!this.validarLimiteSeleccion()) {

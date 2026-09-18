@@ -572,6 +572,36 @@ function assertStickerCount(stickerCount) {
   return { ok: true, qty };
 }
 
+/** Solo dígitos, 5 a 12 caracteres (cédulas colombianas típicas). */
+const CEDULA_REGEX = /^\d{5,12}$/;
+/** Exactamente 10 dígitos (celular colombiano, sin indicativo). */
+const TELEFONO_REGEX = /^\d{10}$/;
+/** Solo letras (con tildes/ñ), espacios, apóstrofes, puntos y guiones — sin números. */
+const NOMBRE_REGEX = /^[A-Za-zÀ-ÿñÑ][A-Za-zÀ-ÿñÑ' .-]*$/;
+
+/**
+ * Rechaza cédula/teléfono/nombre con formato inválido antes de crear la orden.
+ * Repite en el servidor la validación del front (que se puede saltar llamando la API directo).
+ */
+function assertDatosCliente({ cedula, telefono, nombre }) {
+  const ced = String(cedula || '').trim();
+  const tel = String(telefono || '').trim();
+  const nom = String(nombre || '').trim();
+  if (!ced) {
+    return { ok: false, status: 400, error: 'La cédula es obligatoria.' };
+  }
+  if (!CEDULA_REGEX.test(ced)) {
+    return { ok: false, status: 400, error: 'La cédula debe contener solo números (5 a 12 dígitos), sin letras ni espacios.' };
+  }
+  if (tel && !TELEFONO_REGEX.test(tel)) {
+    return { ok: false, status: 400, error: 'El teléfono debe tener exactamente 10 dígitos (sin indicativo ni espacios).' };
+  }
+  if (nom && !NOMBRE_REGEX.test(nom)) {
+    return { ok: false, status: 400, error: 'El nombre no debe contener números.' };
+  }
+  return { ok: true };
+}
+
 /** Rechaza montos que no coincidan con precio × cantidad (el cliente no puede manipular amount). */
 async function assertCheckoutAmount(amount, stickerCount) {
   const countCheck = assertStickerCount(stickerCount);
@@ -765,6 +795,11 @@ app.post('/api/create-checkout-session', async (req, res) => {
       return res.status(amountCheck.status).json({ error: amountCheck.error });
     }
 
+    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName });
+    if (!datosCheck.ok) {
+      return res.status(datosCheck.status).json({ error: datosCheck.error });
+    }
+
     if (!wompiEnabled) {
       const hintSandbox =
         'Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET). Para pruebas sin cobro real usa llaves de sandbox (pub_test_*).';
@@ -876,6 +911,11 @@ app.post('/api/simulate-payment', async (req, res) => {
     const amountCheck = await assertCheckoutAmount(amount, selectedStikers.length);
     if (!amountCheck.ok) {
       return res.status(amountCheck.status).json({ error: amountCheck.error });
+    }
+
+    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName });
+    if (!datosCheck.ok) {
+      return res.status(datosCheck.status).json({ error: datosCheck.error });
     }
 
     const orderId = randomUUID();

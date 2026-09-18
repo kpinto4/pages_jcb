@@ -188,12 +188,13 @@
       </div>
       <div class="form-group">
         <label for="cedula">Cédula <span class="required">*</span></label>
-        <input id="cedula" type="text" placeholder="Ej. 1234567890" [(ngModel)]="cliente.cedula" name="cedula" required>
-        <small class="field-hint">Necesaria para verificar tu compra después.</small>
+        <input id="cedula" type="text" inputmode="numeric" maxlength="12" placeholder="Ej. 1234567890" [(ngModel)]="cliente.cedula" name="cedula" required>
+        <small class="field-hint">Solo números, sin puntos ni espacios. Necesaria para verificar tu compra después.</small>
       </div>
       <div class="form-group">
         <label for="telefono">Teléfono</label>
-        <input id="telefono" type="tel" placeholder="Ej. +57 300 123 4567" [(ngModel)]="cliente.telefono" name="telefono">
+        <input id="telefono" type="tel" inputmode="numeric" maxlength="10" placeholder="Ej. 3187936740" [(ngModel)]="cliente.telefono" name="telefono">
+        <small class="field-hint">10 dígitos, sin indicativo (+57) ni espacios.</small>
       </div>
       <div class="form-group">
         <label for="email">Correo electrónico</label>
