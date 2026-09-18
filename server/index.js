@@ -24,10 +24,16 @@ try {
   estadoSmtp = emailModule.estadoSmtp;
   enviarCorreoPrueba = emailModule.enviarCorreoPrueba;
   enviarComprobanteTrasPago = async (orderId) => {
-    const order = await db?.prepare('SELECT email, nombre, total_cents, currency FROM orders WHERE id = ? AND status = ?').get(orderId, 'paid');
+    const order = await db?.prepare(`
+      SELECT o.id, o.cedula, o.nombre, o.email, o.telefono, o.total_cents, o.currency, o.created_at,
+             s.nombre AS sorteo_nombre, s.premio_descripcion AS sorteo_premio
+      FROM orders o
+      LEFT JOIN sorteos s ON s.id = o.sorteo_mayor_id
+      WHERE o.id = ? AND o.status = ?
+    `).get(orderId, 'paid');
     if (!order?.email) return;
     const items = await db?.prepare('SELECT numero_a, numero_b FROM order_items WHERE order_id = ?').all(orderId) || [];
-    return enviarComprobante(order, items);
+    return enviarComprobante(order, items, publicLinksFromEnv());
   };
 } catch (e) {
   console.warn('Email (comprobantes) no disponible:', e.message);

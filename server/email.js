@@ -333,23 +333,74 @@ if (configurado) {
   console.warn('Correo no configurado: los comprobantes no se enviarán. Define RESEND_API_KEY, BREVO_API_KEY o SMTP_*.');
 }
 
-/** Envía el comprobante al cliente. Devuelve true si OK, false si no. */
-export async function enviarComprobante(order, items = []) {
+/** Escapa texto para insertarlo seguro dentro de HTML (evita romper el layout con &lt;/&gt;/&amp;). */
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+/** Número de factura corto y legible a partir del id de la orden (mismo formato que "Verificar Stiker"). */
+function numeroFactura(orderId) {
+  return `STK-${String(orderId || '').slice(0, 8).toUpperCase()}`;
+}
+
+/** Fecha en español, hora de Colombia (ej. "26 de agosto de 2026, 3:45 p. m."). */
+function fechaFactura(fechaIso) {
+  try {
+    return new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Bogota'
+    }).format(fechaIso ? new Date(fechaIso) : new Date());
+  } catch {
+    return '';
+  }
+}
+
+/** Envía el comprobante al cliente. Devuelve true si OK, false si no.
+ * `links.whatsappDudasUrl` (opcional) agrega un botón de contacto por WhatsApp en el correo. */
+export async function enviarComprobante(order, items = [], links = {}) {
   if (!configurado) return false;
   const email = (order?.email || '').trim();
   if (!email) return false;
 
-  const nombre = (order?.nombre || '').trim() || 'Cliente';
+  const nombre = escapeHtml((order?.nombre || '').trim() || 'Cliente');
+  const cedula = escapeHtml((order?.cedula || '').trim());
+  const telefono = escapeHtml((order?.telefono || '').trim());
+  const factura = numeroFactura(order?.id);
+  const fecha = fechaFactura(order?.created_at);
+  const premio = escapeHtml((order?.sorteo_premio || order?.sorteo_nombre || '').trim());
   const total = Number(order?.total_cents || 0) / 100;
   const moneda = ((order?.currency || 'cop') + '').toUpperCase();
+  const cantidad = items.length || 1;
+  const unitario = total / cantidad;
+  const whatsappUrl = (links?.whatsappDudasUrl || '').trim();
+
+  const fmt = (n) => n.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   const numerosRows = items.length > 0
-    ? items.map(i => `<tr><td style="padding:10px 16px;border-bottom:1px solid #e5e7eb;font-size:16px;font-weight:600;color:#166534;">${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}</td></tr>`).join('')
-    : '<tr><td style="padding:10px 16px;color:#6b7280;">Sin detalle</td></tr>';
+    ? items.map((i, idx) => `
+      <tr>
+        <td style="padding:10px 16px;${idx > 0 ? 'border-top:1px solid #e5e7eb;' : ''}font-size:15px;color:#374151;">Stiker</td>
+        <td style="padding:10px 16px;${idx > 0 ? 'border-top:1px solid #e5e7eb;' : ''}font-size:15px;font-weight:700;color:#166534;text-align:center;">${escapeHtml(i.numero_a ?? '')} - ${escapeHtml(i.numero_b ?? '')}</td>
+        <td style="padding:10px 16px;${idx > 0 ? 'border-top:1px solid #e5e7eb;' : ''}font-size:14px;color:#6b7280;text-align:right;">$${fmt(unitario)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="3" style="padding:10px 16px;color:#6b7280;">Sin detalle</td></tr>`;
 
   const numerosTexto = items.length > 0
     ? items.map(i => `${String(i.numero_a ?? '')} - ${String(i.numero_b ?? '')}`).join('\n')
     : 'Sin detalle';
+
+  const filaDato = (label, value) => value
+    ? `<tr><td style="padding:3px 0;font-size:13px;color:#9ca3af;">${label}</td><td style="padding:3px 0;font-size:13px;color:#374151;font-weight:600;text-align:right;">${value}</td></tr>`
+    : '';
+
+  const botonAyuda = whatsappUrl
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+         <tr><td align="center">
+           <a href="${escapeHtml(whatsappUrl)}" style="display:inline-block;background:#25d366;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:999px;">💬 ¿Dudas con tu compra? Escríbenos por WhatsApp</a>
+         </td></tr>
+       </table>`
+    : '';
 
   const html = `<!DOCTYPE html>
 <html>
@@ -357,28 +408,67 @@ export async function enviarComprobante(order, items = []) {
 <body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden;">
         <tr>
           <td style="background:linear-gradient(135deg,#166534 0%,#22c55e 100%);padding:28px 24px;text-align:center;">
             <h1 style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.02em;">🍀 Juego de la Ciudad Bonita</h1>
-            <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">Comprobante de compra</p>
+            <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">Factura de compra</p>
           </td>
         </tr>
         <tr>
-          <td style="padding:28px 24px;">
-            <p style="margin:0 0 20px;font-size:16px;color:#374151;line-height:1.5;">¡Gracias por tu compra, <strong>${nombre}</strong>!</p>
-            <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Tu compra ha sido confirmada. Aquí están tus números:</p>
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
-              ${numerosRows}
-            </table>
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border-radius:8px;border:1px solid #a7f3d0;">
+          <td style="padding:24px 24px 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:14px 16px;">
               <tr>
-                <td style="padding:16px 20px;">
-                  <span style="font-size:14px;color:#166534;">Total pagado</span><br>
-                  <span style="font-size:24px;font-weight:700;color:#166534;">${total.toLocaleString('es-CO')} ${moneda}</span>
+                <td style="padding:14px 16px 4px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="font-size:13px;color:#9ca3af;">Factura</td>
+                      <td style="font-size:13px;color:#374151;font-weight:700;text-align:right;">${factura}</td>
+                    </tr>
+                    <tr>
+                      <td style="font-size:13px;color:#9ca3af;padding-top:3px;">Fecha</td>
+                      <td style="font-size:13px;color:#374151;font-weight:600;text-align:right;padding-top:3px;">${fecha}</td>
+                    </tr>
+                    ${premio ? `<tr><td style="font-size:13px;color:#9ca3af;padding-top:3px;">Sorteo</td><td style="font-size:13px;color:#374151;font-weight:600;text-align:right;padding-top:3px;">${premio}</td></tr>` : ''}
+                  </table>
                 </td>
               </tr>
             </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px 0;">
+            <p style="margin:0 0 4px;font-size:16px;color:#111827;font-weight:600;">¡Gracias por tu compra, ${nombre}!</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">
+              ${filaDato('Cédula', cedula)}
+              ${filaDato('Teléfono', telefono)}
+              ${filaDato('Correo', escapeHtml(email))}
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 24px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">
+              <tr>
+                <td style="padding:10px 16px;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.03em;">Concepto</td>
+                <td style="padding:10px 16px;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.03em;text-align:center;">Número</td>
+                <td style="padding:10px 16px;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.03em;text-align:right;">Precio</td>
+              </tr>
+              ${numerosRows}
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border-radius:8px;border:1px solid #a7f3d0;">
+              <tr>
+                <td style="padding:16px 20px;">
+                  <span style="font-size:14px;color:#166534;">Total pagado (${cantidad} stiker${cantidad === 1 ? '' : 's'})</span><br>
+                  <span style="font-size:26px;font-weight:700;color:#166534;">$${fmt(total)} ${moneda}</span>
+                </td>
+              </tr>
+            </table>
+            ${botonAyuda}
           </td>
         </tr>
         <tr>
@@ -393,13 +483,20 @@ export async function enviarComprobante(order, items = []) {
 </html>`;
 
   const text =
-    `¡Gracias por tu compra, ${nombre}!\n\n` +
-    `Tu compra ha sido confirmada. Tus números:\n${numerosTexto}\n\n` +
-    `Total pagado: ${total.toLocaleString('es-CO')} ${moneda}\n\n` +
-    'Guarda este correo como comprobante. Verifica tu compra en "Verificar Stiker" con tu cédula.';
+    `Juego de la Ciudad Bonita — Factura de compra\n` +
+    `Factura: ${factura}\n` +
+    `Fecha: ${fecha}\n` +
+    (premio ? `Sorteo: ${order?.sorteo_premio || order?.sorteo_nombre}\n` : '') +
+    `\n¡Gracias por tu compra, ${order?.nombre || 'Cliente'}!\n` +
+    (order?.cedula ? `Cédula: ${order.cedula}\n` : '') +
+    (order?.telefono ? `Teléfono: ${order.telefono}\n` : '') +
+    `\nTus números:\n${numerosTexto}\n\n` +
+    `Total pagado: $${fmt(total)} ${moneda}\n\n` +
+    'Guarda este correo como comprobante. Verifica tu compra en "Verificar Stiker" con tu cédula.' +
+    (whatsappUrl ? `\n\n¿Dudas con tu compra? Escríbenos por WhatsApp: ${whatsappUrl}` : '');
 
   try {
-    await enviarCorreo({ to: email, subject: 'Comprobante - Juego de la Ciudad Bonita', html, text });
+    await enviarCorreo({ to: email, subject: `Factura ${factura} - Juego de la Ciudad Bonita`, html, text });
     console.log(`Comprobante enviado a ${email} vía ${provider}`);
     return true;
   } catch (err) {
