@@ -49,6 +49,19 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   busqueda = '';
   cantidadAleatoria = 1;
 
+  /**
+   * Botones de "asignar al azar". `numeros` es lo que ve el cliente (2 números = 1 stiker,
+   * ya que cada stiker trae un par de números); `cantidadStikers` es lo que de verdad se
+   * asigna al azar.
+   */
+  readonly presetsAleatorios = [
+    { numeros: 2, cantidadStikers: 1 },
+    { numeros: 4, cantidadStikers: 2 },
+    { numeros: 6, cantidadStikers: 3 },
+    { numeros: 8, cantidadStikers: 4 },
+    { numeros: 10, cantidadStikers: 5 }
+  ];
+
   readonly PAGE_SIZE = 100;
   /** Celdas del esqueleto mientras llega la grilla de stikers */
   readonly stikerSkeletonSlots = Array.from({ length: 24 }, (_, i) => i);
@@ -288,6 +301,12 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   /** Tooltip / título con todos los pares. */
   get seleccionResumenTooltip(): string {
     return this.seleccionados.map((s) => `${s.numeroA}-${s.numeroB}`).join(', ');
+  }
+
+  /** Botones "2/4/6/8/10" (números): asigna al azar la cantidad de STIKERS equivalente. */
+  seleccionarCantidadPreset(cantidadStikers: number): void {
+    this.cantidadAleatoria = cantidadStikers;
+    this.seleccionarAleatorios();
   }
 
   seleccionarAleatorios(): void {

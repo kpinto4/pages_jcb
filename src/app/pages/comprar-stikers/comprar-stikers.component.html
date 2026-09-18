@@ -68,15 +68,17 @@
 
     <!-- Compra aleatoria -->
     <div *ngIf="!cargandoStikers && stikers.length > 0" class="aleatorio">
-      <input
-        type="number"
-        min="1"
-        [max]="maxStickersPerOrder"
-        [(ngModel)]="cantidadAleatoria"
-      >
-      <button class="btn-outline" (click)="seleccionarAleatorios()">
-        Asignar al azar
-      </button>
+      <div class="aleatorio-presets">
+        <button
+          type="button"
+          class="preset-btn"
+          *ngFor="let preset of presetsAleatorios"
+          (click)="seleccionarCantidadPreset(preset.cantidadStikers)"
+        >
+          <span class="preset-num">{{ preset.numeros }}</span>
+          <span class="preset-label">stiker</span>
+        </button>
+      </div>
       <span class="limite-compra">Máx. {{ maxStickersPerOrder }} stikers por compra</span>
     </div>
 

@@ -246,30 +246,60 @@
 
 .aleatorio {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.8rem;
   margin-bottom: 1.5rem;
   align-items: center;
 
-  input {
-    width: 100px;
-    padding: 0.65rem 0.75rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--background);
-    color: var(--text);
-    font-family: inherit;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-
-    &:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px var(--accent-light);
-    }
-  }
-
   .limite-compra {
     font-size: 0.85rem;
     color: var(--text-muted);
+  }
+}
+
+.aleatorio-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 4.5rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+
+  .preset-num {
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+
+  .preset-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  &:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-light);
   }
 }
 
@@ -358,8 +388,7 @@
     font-size: 0.75rem;
   }
 
-  .buscador,
-  .aleatorio input {
+  .buscador {
     font-size: 16px; /* Evita zoom en iOS al enfocar */
   }
 }
