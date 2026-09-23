@@ -79,7 +79,6 @@
           <span class="preset-label">stiker</span>
         </button>
       </div>
-      <span class="limite-compra">Máx. {{ maxStickersPerOrder }} stikers por compra</span>
     </div>
 
     <p class="error-msg" *ngIf="errorPago && step === 1">{{ errorPago }}</p>
@@ -147,10 +146,6 @@
 
     <!-- Resumen inline (visible al llegar al final, para usuarios que deslizan) -->
     <div class="resumen" *ngIf="stikers.length > 0" aria-hidden="true">
-      <div class="resumen-inline-text">
-        <p>{{ seleccionados.length }} stikers seleccionados</p>
-        <p *ngIf="seleccionados.length > 0" class="resumen-inline-detail">{{ seleccionResumenUnaLinea }}</p>
-      </div>
       <button
         class="btn-primary"
         [disabled]="seleccionados.length === 0"

@@ -289,16 +289,6 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     return this.stikers.filter(s => s.estado === 'seleccionado');
   }
 
-  /** Vista compacta de los números elegidos (máx. 4 pares + "+N más"). */
-  get seleccionResumenUnaLinea(): string {
-    const sel = this.seleccionados;
-    if (sel.length === 0) return '';
-    const maxPairs = 4;
-    const shown = sel.slice(0, maxPairs).map((s) => `${s.numeroA}-${s.numeroB}`);
-    if (sel.length > maxPairs) shown.push(`+${sel.length - maxPairs} más`);
-    return shown.join(' · ');
-  }
-
   /** Botones "2/4/6/8/10" (números): asigna al azar la cantidad de STIKERS equivalente. */
   seleccionarCantidadPreset(cantidadStikers: number): void {
     this.cantidadAleatoria = cantidadStikers;

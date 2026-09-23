@@ -245,21 +245,12 @@
 }
 
 .aleatorio {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
   margin-bottom: 1.5rem;
-  align-items: center;
-
-  .limite-compra {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-  }
 }
 
 .aleatorio-presets {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.6rem;
   padding: 0.6rem;
   border: 1px solid var(--border);
@@ -272,8 +263,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.15rem;
-  min-width: 4.5rem;
-  padding: 0.6rem 0.9rem;
+  width: 100%;
+  padding: 0.85rem 0.5rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--background);
@@ -522,21 +513,6 @@
     opacity: 0.45;
     font-weight: 400;
   }
-}
-
-.resumen-inline-text {
-  text-align: center;
-
-  p {
-    margin: 0;
-  }
-}
-
-.resumen-inline-detail {
-  margin-top: 0.35rem !important;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  word-break: break-word;
 }
 
 .resumen {
