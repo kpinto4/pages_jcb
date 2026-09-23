@@ -455,7 +455,7 @@
   z-index: 100;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 1rem;
   padding: 1rem 1.25rem;
   /* Deja libre la esquina donde flota el botón de WhatsApp (contact-fab: ~3.35rem + 1rem de margen)
@@ -465,19 +465,6 @@
   background: var(--surface);
   border-top: 1px solid var(--border);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.resumen-sticky-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.resumen-sticky-count {
-  font-weight: 600;
-  color: var(--text);
 }
 
 .resumen-sticky .btn-primary {

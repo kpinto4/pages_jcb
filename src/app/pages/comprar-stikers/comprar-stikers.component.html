@@ -103,11 +103,8 @@
       </button>
     </div>
 
-    <!-- Barra fija: resumen + Continuar siempre visible (no hay que deslizar) -->
+    <!-- Barra fija: botón Continuar siempre visible (no hay que deslizar) -->
     <div *ngIf="!cargandoStikers && stikers.length > 0" class="resumen-sticky">
-      <div class="resumen-sticky-text">
-        <span class="resumen-sticky-count">{{ seleccionados.length }} stikers</span>
-      </div>
       <button
         class="btn-primary"
         [disabled]="seleccionados.length === 0"
