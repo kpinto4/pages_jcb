@@ -366,6 +366,7 @@ export async function enviarComprobante(order, items = [], links = {}) {
   const nombre = escapeHtml((order?.nombre || '').trim() || 'Cliente');
   const cedula = escapeHtml((order?.cedula || '').trim());
   const telefono = escapeHtml((order?.telefono || '').trim());
+  const ciudad = escapeHtml((order?.ciudad || '').trim());
   const factura = numeroFactura(order?.id);
   const fecha = fechaFactura(order?.created_at);
   const premio = escapeHtml((order?.sorteo_premio || order?.sorteo_nombre || '').trim());
@@ -442,6 +443,7 @@ export async function enviarComprobante(order, items = [], links = {}) {
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">
               ${filaDato('Cédula', cedula)}
               ${filaDato('Teléfono', telefono)}
+              ${filaDato('Ciudad', ciudad)}
               ${filaDato('Correo', escapeHtml(email))}
             </table>
           </td>
@@ -490,6 +492,7 @@ export async function enviarComprobante(order, items = [], links = {}) {
     `\n¡Gracias por tu compra, ${order?.nombre || 'Cliente'}!\n` +
     (order?.cedula ? `Cédula: ${order.cedula}\n` : '') +
     (order?.telefono ? `Teléfono: ${order.telefono}\n` : '') +
+    (order?.ciudad ? `Ciudad: ${order.ciudad}\n` : '') +
     `\nTus números:\n${numerosTexto}\n\n` +
     `Total pagado: $${fmt(total)} ${moneda}\n\n` +
     'Guarda este correo como comprobante. Verifica tu compra en "Verificar Stiker" con tu cédula.' +

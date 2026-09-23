@@ -304,6 +304,8 @@
                     <th>Cédula</th>
                     <th>Nombre</th>
                     <th>Email</th>
+                    <th>Teléfono</th>
+                    <th>Ciudad</th>
                     <th>Stikers</th>
                     <th>Total</th>
                     <th>Estado</th>
@@ -316,6 +318,8 @@
                     <td>{{ o.cedula }}</td>
                     <td>{{ o.nombre }}</td>
                     <td>{{ o.email }}</td>
+                    <td>{{ o.telefono || '—' }}</td>
+                    <td>{{ o.ciudad || '—' }}</td>
                     <td>{{ o.items_count }}</td>
                     <td>{{ formatCents(o.total_cents) }}</td>
                     <td>

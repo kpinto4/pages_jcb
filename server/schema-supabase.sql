@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS orders (
   nombre TEXT NOT NULL,
   email TEXT NOT NULL,
   telefono TEXT,
+  ciudad TEXT,
   total_cents INTEGER NOT NULL,
   currency TEXT NOT NULL DEFAULT 'cop',
   status TEXT NOT NULL DEFAULT 'pending',

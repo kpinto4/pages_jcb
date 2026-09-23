@@ -25,7 +25,7 @@ try {
   enviarCorreoPrueba = emailModule.enviarCorreoPrueba;
   enviarComprobanteTrasPago = async (orderId) => {
     const order = await db?.prepare(`
-      SELECT o.id, o.cedula, o.nombre, o.email, o.telefono, o.total_cents, o.currency, o.created_at,
+      SELECT o.id, o.cedula, o.nombre, o.email, o.telefono, o.ciudad, o.total_cents, o.currency, o.created_at,
              s.nombre AS sorteo_nombre, s.premio_descripcion AS sorteo_premio
       FROM orders o
       LEFT JOIN sorteos s ON s.id = o.sorteo_mayor_id
@@ -583,10 +583,11 @@ const NOMBRE_REGEX = /^[A-Za-zÀ-ÿñÑ][A-Za-zÀ-ÿñÑ' .-]*$/;
  * Rechaza cédula/teléfono/nombre con formato inválido antes de crear la orden.
  * Repite en el servidor la validación del front (que se puede saltar llamando la API directo).
  */
-function assertDatosCliente({ cedula, telefono, nombre }) {
+function assertDatosCliente({ cedula, telefono, nombre, ciudad }) {
   const ced = String(cedula || '').trim();
   const tel = String(telefono || '').trim();
   const nom = String(nombre || '').trim();
+  const ciu = String(ciudad || '').trim();
   if (!ced) {
     return { ok: false, status: 400, error: 'La cédula es obligatoria.' };
   }
@@ -598,6 +599,9 @@ function assertDatosCliente({ cedula, telefono, nombre }) {
   }
   if (nom && !NOMBRE_REGEX.test(nom)) {
     return { ok: false, status: 400, error: 'El nombre no debe contener números.' };
+  }
+  if (ciu && !NOMBRE_REGEX.test(ciu)) {
+    return { ok: false, status: 400, error: 'La ciudad no debe contener números.' };
   }
   return { ok: true };
 }
@@ -648,6 +652,7 @@ async function reservarStikersEnTransaccion(tx, {
   nombre,
   customerEmail,
   telefono,
+  ciudad,
   amount,
   currency,
   sorteoMayorId,
@@ -674,9 +679,9 @@ async function reservarStikersEnTransaccion(tx, {
   }
 
   await tx.prepare(`
-    INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), orderStatus, sorteoMayorId);
+    INSERT INTO orders (id, cedula, nombre, email, telefono, ciudad, total_cents, currency, status, sorteo_mayor_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, cedula, nombre, customerEmail, telefono, ciudad || null, amount, currency.toLowerCase(), orderStatus, sorteoMayorId);
 
   const insertItem = tx.prepare(`
     INSERT INTO order_items (order_id, numero_a, numero_b) VALUES (?, ?, ?)
@@ -795,7 +800,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
       return res.status(amountCheck.status).json({ error: amountCheck.error });
     }
 
-    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName });
+    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName, ciudad: metadata.ciudad });
     if (!datosCheck.ok) {
       return res.status(datosCheck.status).json({ error: datosCheck.error });
     }
@@ -815,6 +820,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const cedula = (metadata.cedula || '').trim();
     const nombre = (customerName || '').trim() || 'Cliente';
     const telefono = (metadata.telefono || '').trim();
+    const ciudad = (metadata.ciudad || '').trim();
 
     if (selectedStikers.length > 0) {
       const sorteoMayorId = await getPremioMayorActivoId();
@@ -826,6 +832,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
           nombre,
           customerEmail,
           telefono,
+          ciudad,
           amount,
           currency,
           sorteoMayorId,
@@ -836,9 +843,9 @@ app.post('/api/create-checkout-session', async (req, res) => {
     } else {
       const sorteoMayorId = await getPremioMayorActivoId();
       await db.prepare(`
-        INSERT INTO orders (id, cedula, nombre, email, telefono, total_cents, currency, status, sorteo_mayor_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-      `).run(orderId, cedula, nombre, customerEmail, telefono, amount, currency.toLowerCase(), sorteoMayorId);
+        INSERT INTO orders (id, cedula, nombre, email, telefono, ciudad, total_cents, currency, status, sorteo_mayor_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+      `).run(orderId, cedula, nombre, customerEmail, telefono, ciudad || null, amount, currency.toLowerCase(), sorteoMayorId);
     }
 
     // ----- Wompi: Web Checkout (redirect) -----
@@ -913,7 +920,7 @@ app.post('/api/simulate-payment', async (req, res) => {
       return res.status(amountCheck.status).json({ error: amountCheck.error });
     }
 
-    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName });
+    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName, ciudad: metadata.ciudad });
     if (!datosCheck.ok) {
       return res.status(datosCheck.status).json({ error: datosCheck.error });
     }
@@ -922,6 +929,7 @@ app.post('/api/simulate-payment', async (req, res) => {
     const cedula = (metadata.cedula || '').trim();
     const nombre = (customerName || '').trim() || 'Cliente';
     const telefono = (metadata.telefono || '').trim();
+    const ciudad = (metadata.ciudad || '').trim();
 
     const sorteoMayorId = await getPremioMayorActivoId();
     const runTx = db.transaction(async (tx) => {
@@ -932,6 +940,7 @@ app.post('/api/simulate-payment', async (req, res) => {
         nombre,
         customerEmail,
         telefono,
+        ciudad,
         amount: Math.round(Number(amount)),
         currency: currency || 'cop',
         sorteoMayorId,
@@ -1058,7 +1067,7 @@ app.get('/api/admin/orders', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const rows = await db.prepare(`
-      SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
+      SELECT o.id, o.cedula, o.nombre, o.email, o.telefono, o.ciudad, o.total_cents, o.currency, o.status, o.created_at,
              (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
       FROM orders o
       ORDER BY o.created_at DESC
@@ -1087,7 +1096,7 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
     enviarComprobanteTrasPago(id).catch(e => console.warn('Email comprobante:', e?.message));
 
     const updated = await db.prepare(`
-      SELECT o.id, o.cedula, o.nombre, o.email, o.total_cents, o.currency, o.status, o.created_at,
+      SELECT o.id, o.cedula, o.nombre, o.email, o.telefono, o.ciudad, o.total_cents, o.currency, o.status, o.created_at,
              (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
       FROM orders o
       WHERE o.id = ?

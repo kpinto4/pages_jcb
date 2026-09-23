@@ -76,7 +76,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     nombre: '',
     cedula: '',
     telefono: '',
-    email: ''
+    email: '',
+    ciudad: ''
   };
 
   /** Datos mostrados en la pantalla de éxito (vuelta desde Wompi o simulación) */
@@ -288,7 +289,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     return this.stikers.filter(s => s.estado === 'seleccionado');
   }
 
-  /** Vista compacta para la barra fija (máx. 4 pares + “+N más”). */
+  /** Vista compacta de los números elegidos (máx. 4 pares + "+N más"). */
   get seleccionResumenUnaLinea(): string {
     const sel = this.seleccionados;
     if (sel.length === 0) return '';
@@ -296,11 +297,6 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     const shown = sel.slice(0, maxPairs).map((s) => `${s.numeroA}-${s.numeroB}`);
     if (sel.length > maxPairs) shown.push(`+${sel.length - maxPairs} más`);
     return shown.join(' · ');
-  }
-
-  /** Tooltip / título con todos los pares. */
-  get seleccionResumenTooltip(): string {
-    return this.seleccionados.map((s) => `${s.numeroA}-${s.numeroB}`).join(', ');
   }
 
   /** Botones "2/4/6/8/10" (números): asigna al azar la cantidad de STIKERS equivalente. */
@@ -346,15 +342,20 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   /** Solo letras (con tildes/ñ), espacios, apóstrofes y guiones — sin números. */
   private static readonly NOMBRE_REGEX = /^[A-Za-zÀ-ÿñÑ][A-Za-zÀ-ÿñÑ' .-]*$/;
 
-  /** Valida nombre/cédula/teléfono/correo antes de reservar o pagar. Deja el mensaje en errorPago. */
+  /** Valida nombre/cédula/teléfono/ciudad/correo antes de reservar o pagar. Deja el mensaje en errorPago. */
   private validarDatosCliente(): boolean {
     const nombre = this.cliente.nombre?.trim();
     const ced = this.cliente.cedula?.trim();
     const telefono = this.cliente.telefono?.trim();
+    const ciudad = this.cliente.ciudad?.trim();
     const email = this.cliente.email?.trim();
 
     if (nombre && !ComprarStikersComponent.NOMBRE_REGEX.test(nombre)) {
       this.errorPago = 'El nombre no debe contener números.';
+      return false;
+    }
+    if (ciudad && !ComprarStikersComponent.NOMBRE_REGEX.test(ciudad)) {
+      this.errorPago = 'La ciudad no debe contener números.';
       return false;
     }
     if (!ced) {
@@ -456,6 +457,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       metadata: {
         cedula: this.cliente.cedula.trim() || '',
         telefono: this.cliente.telefono.trim() || '',
+        ciudad: this.cliente.ciudad.trim() || '',
         stikersDetail: stikersDetail.slice(0, 500)
       },
       selectedStikers
@@ -502,6 +504,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       metadata: {
         cedula: this.cliente.cedula.trim() || '',
         telefono: this.cliente.telefono.trim() || '',
+        ciudad: this.cliente.ciudad.trim() || '',
         stikersDetail: stikersDetail.slice(0, 500)
       },
       selectedStikers

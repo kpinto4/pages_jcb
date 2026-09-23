@@ -31,6 +31,8 @@ export interface AdminOrder {
   cedula: string;
   nombre: string;
   email: string;
+  telefono?: string | null;
+  ciudad?: string | null;
   total_cents: number;
   currency: string;
   status: string;
