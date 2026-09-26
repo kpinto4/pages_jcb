@@ -248,13 +248,12 @@
   margin-bottom: 1.5rem;
 }
 
+/* Mismo gap, borde y padding que la grilla de pares (.grid / .stiker) para que cada botón
+   tenga el mismo tamaño y quede alineado con las columnas de abajo. */
 .aleatorio-presets {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 0.6rem;
-  padding: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  gap: 1rem;
 }
 
 .preset-btn {
@@ -264,9 +263,9 @@
   justify-content: center;
   gap: 0.15rem;
   width: 100%;
-  padding: 0.85rem 0.5rem;
+  padding: 1rem 0.5rem;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   background: var(--background);
   color: var(--text);
   font-family: inherit;
@@ -367,6 +366,10 @@
     gap: 0.6rem;
   }
 
+  .aleatorio-presets {
+    gap: 0.6rem;
+  }
+
   .stiker {
     padding: 0.75rem;
   }
@@ -388,6 +391,14 @@
   .grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;
+  }
+
+  .aleatorio-presets {
+    gap: 0.4rem;
+  }
+
+  .preset-btn {
+    padding: 0.8rem 0.25rem;
   }
 }
 
