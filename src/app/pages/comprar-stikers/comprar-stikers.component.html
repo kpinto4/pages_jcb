@@ -72,6 +72,8 @@
         <button
           type="button"
           class="preset-btn"
+          [class.active]="presetActivo === preset.cantidadStikers"
+          [attr.aria-pressed]="presetActivo === preset.cantidadStikers"
           *ngFor="let preset of presetsAleatorios"
           (click)="seleccionarCantidadPreset(preset.cantidadStikers)"
         >

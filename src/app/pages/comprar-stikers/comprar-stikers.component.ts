@@ -54,6 +54,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
    * ya que cada stiker trae un par de números); `cantidadStikers` es lo que de verdad se
    * asigna al azar.
    */
+  /** Cantidad de stikers del botón preset activo (null si la selección no viene de un preset). */
+  presetActivo: number | null = null;
+
   readonly presetsAleatorios = [
     { numeros: 2, cantidadStikers: 1 },
     { numeros: 4, cantidadStikers: 2 },
@@ -231,6 +234,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       return;
     }
     this.errorPago = '';
+    this.presetActivo = null;
     stiker.estado =
       stiker.estado === 'seleccionado' ? 'libre' : 'seleccionado';
   }
@@ -293,6 +297,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   seleccionarCantidadPreset(cantidadStikers: number): void {
     this.cantidadAleatoria = cantidadStikers;
     this.seleccionarAleatorios();
+    this.presetActivo = cantidadStikers;
   }
 
   seleccionarAleatorios(): void {
@@ -311,6 +316,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   }
 
   limpiarSeleccion(): void {
+    this.presetActivo = null;
     this.stikers.forEach(s => {
       if (s.estado === 'seleccionado') s.estado = 'libre';
     });
