@@ -812,7 +812,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
         ? ' En este entorno (desarrollo) también puedes usar "Simular pago".'
         : '';
       return res.status(503).json({
-        error: `Pagos con tarjeta en mantenimiento. ${hintSandbox}${hintSimulate}`
+        error: `Pagos en línea en mantenimiento. ${hintSandbox}${hintSimulate}`
       });
     }
 
