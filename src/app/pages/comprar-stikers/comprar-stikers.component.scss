@@ -185,7 +185,8 @@
     font-weight: 500;
   }
 
-  input {
+  input,
+  select {
     width: 100%;
     padding: 0.85rem 1rem;
     border-radius: var(--radius);
@@ -195,6 +196,11 @@
     font-size: 1rem;
     font-family: inherit;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
     &::placeholder {
       color: var(--text-muted);
@@ -215,8 +221,23 @@
   }
 }
 
+/* Datos PSE (paso 3): tipo de persona, documento y banco */
+.form-pse {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.25rem;
+  max-width: 34rem;
+  margin: 0 auto 1.5rem;
+  text-align: left;
+
+  .form-pse-banco {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 520px) {
-  .form-datos {
+  .form-datos,
+  .form-pse {
     grid-template-columns: 1fr;
   }
 }

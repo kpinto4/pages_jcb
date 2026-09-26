@@ -213,6 +213,34 @@
       </ul>
     </div>
 
+    <form *ngIf="pseEnabled && !procesandoPago" class="form-pse">
+      <div class="form-group">
+        <label for="pse-persona">Tipo de persona</label>
+        <select id="pse-persona" name="pse-persona" [(ngModel)]="pse.userType" (ngModelChange)="onTipoPersonaChange()">
+          <option [ngValue]="0">Persona natural</option>
+          <option [ngValue]="1">Persona jurídica</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="pse-doc">Tipo de documento</label>
+        <select id="pse-doc" name="pse-doc" [(ngModel)]="pse.legalIdType" [disabled]="pse.userType === 1">
+          <option value="CC">Cédula de ciudadanía (CC)</option>
+          <option value="CE">Cédula de extranjería (CE)</option>
+          <option value="NIT">NIT</option>
+        </select>
+      </div>
+      <div class="form-group form-pse-banco">
+        <label for="pse-banco">Banco</label>
+        <select id="pse-banco" name="pse-banco" [(ngModel)]="pse.bankCode" [disabled]="cargandoBancos">
+          <option value="">{{ cargandoBancos ? 'Cargando bancos...' : 'Selecciona tu banco' }}</option>
+          <option *ngFor="let b of bancosPse" [value]="b.code">{{ b.name }}</option>
+        </select>
+        <small class="field-hint" *ngIf="errorBancos">
+          {{ errorBancos }} <a href="javascript:void(0)" (click)="cargarBancosPse()">Reintentar</a>
+        </small>
+      </div>
+    </form>
+
     <p>Total a pagar</p>
     <strong class="total-amount">{{ formatearPrecio(total, currency) }}</strong>
 
@@ -221,7 +249,7 @@
     <app-loading-indicator
       *ngIf="procesandoPago"
       class="pago-loader"
-      [message]="verificandoVueltaPago ? 'Verificando tu pago...' : 'Redirigiendo a la pasarela de pago...'"
+      [message]="verificandoVueltaPago ? 'Verificando tu pago...' : (pseEnabled ? 'Redirigiendo a tu banco...' : 'Redirigiendo a la pasarela de pago...')"
       layout="block"
       size="lg"
     />

@@ -56,6 +56,20 @@ export interface ShopConfig {
   currency: string;
   maxStickersPerOrder?: number;
   pendingOrderExpireMinutes?: number;
+  /** true si el backend puede crear el pago PSE directo (tiene la llave privada de Wompi). */
+  pseEnabled?: boolean;
+}
+
+export interface BancoPse {
+  code: string;
+  name: string;
+}
+
+export interface DatosPse {
+  /** 0 = persona natural, 1 = persona jurídica */
+  userType: 0 | 1;
+  legalIdType: 'CC' | 'CE' | 'NIT';
+  bankCode: string;
 }
 
 @Injectable({
@@ -84,6 +98,23 @@ export class PaymentService {
         console.error('Error al crear sesión de pago:', err);
         throw err;
       })
+    );
+  }
+
+  /** Lista de bancos PSE (desde Wompi, con caché en el backend). */
+  getBancosPse(): Observable<{ bancos: BancoPse[] }> {
+    return this.http.get<{ bancos: BancoPse[] }>(apiEndpoint('/api/pse/bancos'));
+  }
+
+  /**
+   * Crea el pago PSE directo: reserva los stikers y devuelve la URL del banco a la que hay que redirigir.
+   */
+  createPsePayment(request: CreateCheckoutSessionRequest & { pse: DatosPse }): Observable<{ redirectUrl: string; sessionId: string }> {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const successUrl = `${origin}/comprar-stikers?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    return this.http.post<{ redirectUrl: string; sessionId: string }>(
+      apiEndpoint('/api/create-pse-payment'),
+      { ...request, successUrl }
     );
   }
 
@@ -131,7 +162,7 @@ export class PaymentService {
    */
   getConfig(): Observable<ShopConfig> {
     return this.http.get<ShopConfig>(apiEndpoint('/api/config')).pipe(
-      catchError(() => of({ precioStikerCents: 5000, currency: 'cop', maxStickersPerOrder: 50, pendingOrderExpireMinutes: 30 }))
+      catchError(() => of({ precioStikerCents: 5000, currency: 'cop', maxStickersPerOrder: 50, pendingOrderExpireMinutes: 30, pseEnabled: false }))
     );
   }
 

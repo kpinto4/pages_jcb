@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { Subject, takeUntil, startWith, forkJoin } from 'rxjs';
-import { PaymentService, SessionDetails } from '../../core/services/payment.service';
+import { PaymentService, SessionDetails, BancoPse, DatosPse } from '../../core/services/payment.service';
 import { SorteosService } from '../../core/services/sorteos.service';
 import { LoadingIndicatorComponent } from '../../shared/loading-indicator/loading-indicator.component';
 import { environment } from '../../../environments/environment';
@@ -45,6 +45,13 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   get precioStiker(): number {
     return this.precioStikerCents / 100;
   }
+
+  /** true si el backend crea el pago PSE directo (el cliente elige banco aquí y va directo a él). */
+  pseEnabled = false;
+  bancosPse: BancoPse[] = [];
+  cargandoBancos = false;
+  errorBancos = '';
+  pse: DatosPse = { userType: 0, legalIdType: 'CC', bankCode: '' };
 
   busqueda = '';
   cantidadAleatoria = 1;
@@ -109,6 +116,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         this.precioStikerCents = c.precioStikerCents ?? 5000;
         this.currency = c.currency ?? 'usd';
         this.maxStickersPerOrder = c.maxStickersPerOrder ?? 50;
+        this.pseEnabled = !!c.pseEnabled;
+        if (this.pseEnabled) this.cargarBancosPse();
       }
     });
 
@@ -421,6 +430,27 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     }
   }
 
+  cargarBancosPse(): void {
+    this.cargandoBancos = true;
+    this.errorBancos = '';
+    this.paymentService.getBancosPse().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        this.bancosPse = res?.bancos ?? [];
+        this.cargandoBancos = false;
+        if (!this.bancosPse.length) this.errorBancos = 'No se pudo cargar la lista de bancos.';
+      },
+      error: () => {
+        this.cargandoBancos = false;
+        this.errorBancos = 'No se pudo cargar la lista de bancos.';
+      }
+    });
+  }
+
+  /** Persona jurídica paga con NIT; natural con CC o CE. */
+  onTipoPersonaChange(): void {
+    this.pse.legalIdType = this.pse.userType === 1 ? 'NIT' : 'CC';
+  }
+
   irAPagar(): void {
     this.errorPago = '';
     this.pagoCancelado = false;
@@ -436,6 +466,10 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     if (!this.validarLimiteSeleccion()) {
       return;
     }
+    if (this.pseEnabled && !this.pse.bankCode) {
+      this.errorPago = 'Selecciona tu banco para pagar con PSE.';
+      return;
+    }
 
     this.procesandoPago = true;
 
@@ -445,7 +479,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
 
     const selectedStikers = this.seleccionados.map(s => ({ numeroA: s.numeroA, numeroB: s.numeroB }));
 
-    this.paymentService.createCheckoutSession({
+    const solicitud = {
       amount: this.totalCentavos,
       currency: this.currency,
       customerEmail: this.cliente.email.trim(),
@@ -457,7 +491,34 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         stikersDetail: stikersDetail.slice(0, 500)
       },
       selectedStikers
-    }).subscribe({
+    };
+
+    if (this.pseEnabled) {
+      this.paymentService.createPsePayment({
+        ...solicitud,
+        pse: {
+          userType: this.pse.userType,
+          legalIdType: this.pse.legalIdType,
+          bankCode: this.pse.bankCode
+        }
+      }).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (res) => {
+          if (res?.redirectUrl) {
+            window.location.href = res.redirectUrl;
+          } else {
+            this.procesandoPago = false;
+            this.errorPago = 'No se recibió la URL del banco. Inténtalo de nuevo.';
+          }
+        },
+        error: (err) => {
+          this.procesandoPago = false;
+          this.errorPago = err?.error?.error || err?.message || 'No se pudo iniciar el pago con PSE.';
+        }
+      });
+      return;
+    }
+
+    this.paymentService.createCheckoutSession(solicitud).subscribe({
       next: (res) => {
         if (res?.checkoutUrl) {
           window.location.href = res.checkoutUrl;

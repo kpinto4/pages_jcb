@@ -179,6 +179,13 @@ const wompiRedirectOverride = (process.env.WOMPI_REDIRECT_URL_OVERRIDE || '').tr
 const wompiSuccessUrlOverride = (process.env.WOMPI_SUCCESS_URL || '').trim();
 const wompiRedirectFallback = 'https://transaction-redirect.wompi.co/check';
 const wompiEnabled = !!(wompiPublicKey && wompiIntegritySecret);
+/** Llave privada (prv_test_* / prv_prod_*): necesaria para crear transacciones PSE directas por API. */
+const wompiPrivateKey = (process.env.WOMPI_PRIVATE_KEY || '').trim();
+const wompiApiUrl = (process.env.WOMPI_API_URL
+  || (wompiPublicKey.startsWith('pub_test_') ? 'https://sandbox.wompi.co/v1' : 'https://production.wompi.co/v1')
+).trim().replace(/\/+$/, '');
+/** Pago directo con PSE (sin pasar por la pantalla de métodos de Wompi). Sin llave privada, se usa el checkout normal. */
+const wompiPseEnabled = wompiEnabled && !!wompiPrivateKey;
 const isProduction = process.env.NODE_ENV === 'production';
 /** “Simular pago” solo con servidor en desarrollo; producción debe usar Wompi (sandbox pub_test_* o llaves de producción). */
 const simulatePaymentAllowed = !isProduction;
@@ -769,25 +776,113 @@ app.get('/api/verificar-stikers', verificarRateLimit, async (req, res) => {
 
 // ----- CHECKOUT (Wompi: reservar stikers y devolver URL de checkout) -----
 
+/**
+ * Valida la compra (sorteo activo, monto, datos del cliente) y crea la orden 'pending'
+ * reservando los stikers. Devuelve `{ error }` con status/mensaje o los datos de la orden.
+ */
+async function crearOrdenPendiente(body) {
+  if (!(await hayPremioMayorActivo())) {
+    return { error: { status: 400, message: 'No hay sorteo activo. Las compras de stikers están cerradas.' } };
+  }
+
+  const {
+    amount,
+    currency = 'usd',
+    customerEmail,
+    customerName,
+    metadata = {},
+    selectedStikers = []
+  } = body;
+
+  const amountCheck = await assertCheckoutAmount(amount, selectedStikers.length);
+  if (!amountCheck.ok) {
+    return { error: { status: amountCheck.status, message: amountCheck.error } };
+  }
+
+  const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName, ciudad: metadata.ciudad });
+  if (!datosCheck.ok) {
+    return { error: { status: datosCheck.status, message: datosCheck.error } };
+  }
+
+  if (!wompiEnabled) {
+    const hintSandbox =
+      'Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET). Para pruebas sin cobro real usa llaves de sandbox (pub_test_*).';
+    const hintSimulate = simulatePaymentAllowed
+      ? ' En este entorno (desarrollo) también puedes usar "Simular pago".'
+      : '';
+    return { error: { status: 503, message: `Pagos en línea en mantenimiento. ${hintSandbox}${hintSimulate}` } };
+  }
+
+  const orderId = randomUUID();
+  const cedula = (metadata.cedula || '').trim();
+  const nombre = (customerName || '').trim() || 'Cliente';
+  const telefono = (metadata.telefono || '').trim();
+  const ciudad = (metadata.ciudad || '').trim();
+
+  if (selectedStikers.length > 0) {
+    const sorteoMayorId = await getPremioMayorActivoId();
+    const runTx = db.transaction(async (tx) => {
+      await reservarStikersEnTransaccion(tx, {
+        orderId,
+        selectedStikers,
+        cedula,
+        nombre,
+        customerEmail,
+        telefono,
+        ciudad,
+        amount,
+        currency,
+        sorteoMayorId,
+        orderStatus: 'pending'
+      });
+    });
+    await runTx();
+  } else {
+    const sorteoMayorId = await getPremioMayorActivoId();
+    await db.prepare(`
+      INSERT INTO orders (id, cedula, nombre, email, telefono, ciudad, total_cents, currency, status, sorteo_mayor_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(orderId, cedula, nombre, customerEmail, telefono, ciudad || null, amount, currency.toLowerCase(), sorteoMayorId);
+  }
+
+  return {
+    orderId,
+    nombre,
+    cedula,
+    telefono,
+    customerEmail,
+    amountInCents: Math.round(Number(amount)),
+    currencyWompi: 'COP'
+  };
+}
+
+/** Libera los stikers y marca 'expired' una orden pendiente que no llegó a la pasarela. */
+async function liberarOrdenPendiente(orderId) {
+  try {
+    await db.prepare('UPDATE stiker_slots SET order_id = NULL WHERE order_id = ?').run(orderId);
+    await db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+    await db.prepare(`UPDATE orders SET status = 'expired' WHERE id = ? AND status = 'pending'`).run(orderId);
+  } catch (e) {
+    console.warn('No se pudo liberar la orden pendiente', orderId, e?.message);
+  }
+}
+
+/** URL a la que Wompi/el banco devuelve al cliente tras pagar. */
+function resolverRedirectUrl(successUrl, orderId) {
+  let redirectUrl = (successUrl || '').replace(/\{CHECKOUT_SESSION_ID\}/g, orderId);
+  if (wompiRedirectOverride) {
+    redirectUrl = wompiRedirectOverride;
+  } else if (/localhost|127\.0\.0\.1/i.test(redirectUrl)) {
+    redirectUrl = wompiSuccessUrlOverride
+      ? wompiSuccessUrlOverride.replace(/\{CHECKOUT_SESSION_ID\}/g, orderId)
+      : wompiRedirectFallback;
+  }
+  return redirectUrl;
+}
+
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
-    if (!(await hayPremioMayorActivo())) {
-      return res.status(400).json({
-        error: 'No hay sorteo activo. Las compras de stikers están cerradas.'
-      });
-    }
-
-    const {
-      amount,
-      currency = 'usd',
-      customerEmail,
-      customerName,
-      lineItems,
-      metadata = {},
-      successUrl,
-      cancelUrl,
-      selectedStikers = []
-    } = req.body;
+    const { amount, customerEmail, successUrl, cancelUrl } = req.body;
 
     if (!amount || amount <= 0 || !customerEmail || !successUrl || !cancelUrl) {
       return res.status(400).json({
@@ -795,72 +890,16 @@ app.post('/api/create-checkout-session', async (req, res) => {
       });
     }
 
-    const amountCheck = await assertCheckoutAmount(amount, selectedStikers.length);
-    if (!amountCheck.ok) {
-      return res.status(amountCheck.status).json({ error: amountCheck.error });
+    const orden = await crearOrdenPendiente(req.body);
+    if (orden.error) {
+      return res.status(orden.error.status).json({ error: orden.error.message });
     }
-
-    const datosCheck = assertDatosCliente({ cedula: metadata.cedula, telefono: metadata.telefono, nombre: customerName, ciudad: metadata.ciudad });
-    if (!datosCheck.ok) {
-      return res.status(datosCheck.status).json({ error: datosCheck.error });
-    }
-
-    if (!wompiEnabled) {
-      const hintSandbox =
-        'Configura Wompi en server/.env (WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET). Para pruebas sin cobro real usa llaves de sandbox (pub_test_*).';
-      const hintSimulate = simulatePaymentAllowed
-        ? ' En este entorno (desarrollo) también puedes usar "Simular pago".'
-        : '';
-      return res.status(503).json({
-        error: `Pagos en línea en mantenimiento. ${hintSandbox}${hintSimulate}`
-      });
-    }
-
-    const orderId = randomUUID();
-    const cedula = (metadata.cedula || '').trim();
-    const nombre = (customerName || '').trim() || 'Cliente';
-    const telefono = (metadata.telefono || '').trim();
-    const ciudad = (metadata.ciudad || '').trim();
-
-    if (selectedStikers.length > 0) {
-      const sorteoMayorId = await getPremioMayorActivoId();
-      const runTx = db.transaction(async (tx) => {
-        await reservarStikersEnTransaccion(tx, {
-          orderId,
-          selectedStikers,
-          cedula,
-          nombre,
-          customerEmail,
-          telefono,
-          ciudad,
-          amount,
-          currency,
-          sorteoMayorId,
-          orderStatus: 'pending'
-        });
-      });
-      await runTx();
-    } else {
-      const sorteoMayorId = await getPremioMayorActivoId();
-      await db.prepare(`
-        INSERT INTO orders (id, cedula, nombre, email, telefono, ciudad, total_cents, currency, status, sorteo_mayor_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-      `).run(orderId, cedula, nombre, customerEmail, telefono, ciudad || null, amount, currency.toLowerCase(), sorteoMayorId);
-    }
+    const { orderId, nombre, amountInCents, currencyWompi } = orden;
 
     // ----- Wompi: Web Checkout (redirect) -----
-    const amountInCents = Math.round(Number(amount));
-    const currencyWompi = (currency || 'cop').toLowerCase() === 'cop' ? 'COP' : 'COP';
     const reference = orderId;
     const signature = wompiSignature(reference, amountInCents, currencyWompi);
-    let redirectUrl = (successUrl || '').replace(/\{CHECKOUT_SESSION_ID\}/g, orderId);
-    if (wompiRedirectOverride) {
-      redirectUrl = wompiRedirectOverride;
-    } else if (/localhost|127\.0\.0\.1/i.test(redirectUrl)) {
-      redirectUrl = wompiSuccessUrlOverride
-        ? wompiSuccessUrlOverride.replace(/\{CHECKOUT_SESSION_ID\}/g, orderId)
-        : wompiRedirectFallback;
-    }
+    const redirectUrl = resolverRedirectUrl(successUrl, orderId);
     const params = new URLSearchParams({
       'public-key': wompiPublicKey,
       currency: currencyWompi,
@@ -881,6 +920,148 @@ app.post('/api/create-checkout-session', async (req, res) => {
     res.status(500).json({
       error: err.message || 'Error al crear la sesión de pago'
     });
+  }
+});
+
+// ----- PSE DIRECTO (API de Wompi: el cliente va directo al banco) -----
+
+/** Llamada a la API de Wompi con timeout. `key` es la llave (pública o privada) para el Bearer. */
+async function wompiFetch(path, { method = 'GET', key, body } = {}) {
+  const r = await fetch(`${wompiApiUrl}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(key ? { Authorization: `Bearer ${key}` } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15000)
+  });
+  const json = await r.json().catch(() => null);
+  if (!r.ok) {
+    const detalle = json?.error?.reason
+      || (json?.error?.messages ? JSON.stringify(json.error.messages) : null)
+      || `HTTP ${r.status}`;
+    const err = new Error(`Wompi: ${detalle}`);
+    err.wompiStatus = r.status;
+    throw err;
+  }
+  return json;
+}
+
+let pseBancosCache = { at: 0, list: [] };
+
+async function obtenerBancosPse() {
+  if (pseBancosCache.list.length && Date.now() - pseBancosCache.at < 60 * 60 * 1000) {
+    return pseBancosCache.list;
+  }
+  const json = await wompiFetch('/pse/financial_institutions', { key: wompiPublicKey });
+  const list = (json?.data || [])
+    .filter((b) => b?.financial_institution_code && String(b.financial_institution_code) !== '0')
+    .map((b) => ({
+      code: String(b.financial_institution_code),
+      name: String(b.financial_institution_name || '').trim()
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  if (list.length) pseBancosCache = { at: Date.now(), list };
+  return list;
+}
+
+app.get('/api/pse/bancos', async (req, res) => {
+  if (!wompiPseEnabled) {
+    return res.status(503).json({ error: 'El pago directo con PSE no está habilitado.' });
+  }
+  try {
+    res.json({ bancos: await obtenerBancosPse() });
+  } catch (err) {
+    console.error('Error GET /api/pse/bancos:', err?.message);
+    res.status(502).json({ error: 'No se pudo cargar la lista de bancos. Inténtalo de nuevo.' });
+  }
+});
+
+const PSE_ID_TYPES = ['CC', 'CE', 'NIT'];
+
+app.post('/api/create-pse-payment', async (req, res) => {
+  if (!wompiPseEnabled) {
+    return res.status(503).json({ error: 'El pago directo con PSE no está habilitado.' });
+  }
+  let orderId = null;
+  try {
+    const { amount, customerEmail, successUrl, pse = {} } = req.body;
+    if (!amount || amount <= 0 || !customerEmail || !successUrl) {
+      return res.status(400).json({ error: 'Faltan campos requeridos: amount, customerEmail, successUrl' });
+    }
+    const userType = Number(pse.userType);
+    const legalIdType = String(pse.legalIdType || '').toUpperCase();
+    const bankCode = String(pse.bankCode || '').trim();
+    if (![0, 1].includes(userType)) {
+      return res.status(400).json({ error: 'Selecciona el tipo de persona (natural o jurídica).' });
+    }
+    if (!PSE_ID_TYPES.includes(legalIdType)) {
+      return res.status(400).json({ error: 'Selecciona el tipo de documento.' });
+    }
+    if (!/^\d{1,6}$/.test(bankCode)) {
+      return res.status(400).json({ error: 'Selecciona tu banco.' });
+    }
+
+    const orden = await crearOrdenPendiente(req.body);
+    if (orden.error) {
+      return res.status(orden.error.status).json({ error: orden.error.message });
+    }
+    orderId = orden.orderId;
+    const { nombre, cedula, telefono, amountInCents, currencyWompi } = orden;
+
+    const merchant = await wompiFetch(`/merchants/${wompiPublicKey}`);
+    const acceptanceToken = merchant?.data?.presigned_acceptance?.acceptance_token;
+    if (!acceptanceToken) throw new Error('Wompi no devolvió el token de aceptación.');
+
+    const redirectUrl = resolverRedirectUrl(successUrl, orderId);
+    const tx = await wompiFetch('/transactions', {
+      method: 'POST',
+      key: wompiPrivateKey,
+      body: {
+        acceptance_token: acceptanceToken,
+        amount_in_cents: amountInCents,
+        currency: currencyWompi,
+        customer_email: customerEmail,
+        reference: orderId,
+        signature: wompiSignature(orderId, amountInCents, currencyWompi),
+        redirect_url: redirectUrl,
+        customer_data: {
+          full_name: nombre,
+          ...(/^\d{10}$/.test(telefono) ? { phone_number: telefono } : {})
+        },
+        payment_method: {
+          type: 'PSE',
+          user_type: userType,
+          user_legal_id_type: legalIdType,
+          user_legal_id: cedula,
+          financial_institution_code: bankCode,
+          payment_description: `Stikers Juego de la Ciudad Bonita (${orderId.slice(0, 8)})`
+        }
+      }
+    });
+    const txId = tx?.data?.id;
+    if (!txId) throw new Error('Wompi no devolvió el id de la transacción.');
+
+    // La URL del banco puede tardar un instante en estar disponible.
+    let asyncUrl = tx?.data?.payment_method?.extra?.async_payment_url || null;
+    for (let i = 0; !asyncUrl && i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const estado = await wompiFetch(`/transactions/${txId}`, { key: wompiPrivateKey });
+      const t = estado?.data;
+      if (t && ['DECLINED', 'ERROR', 'VOIDED'].includes(t.status)) {
+        throw new Error(`El pago fue rechazado (${t.status_message || t.status}).`);
+      }
+      asyncUrl = t?.payment_method?.extra?.async_payment_url || null;
+    }
+    if (!asyncUrl) throw new Error('No se obtuvo la URL del banco. Inténtalo de nuevo.');
+
+    return res.json({ provider: 'wompi-pse', redirectUrl: asyncUrl, sessionId: orderId });
+  } catch (err) {
+    console.error('Error creando pago PSE:', err?.message || err);
+    if (orderId) await liberarOrdenPendiente(orderId);
+    const status = err.status === 409 || err.status === 400 ? err.status : 502;
+    res.status(status).json({ error: err.message || 'No se pudo iniciar el pago con PSE.' });
   }
 });
 
@@ -1274,6 +1455,7 @@ app.get('/api/config', async (req, res) => {
       currency: currency ? currency.value : 'cop',
       maxStickersPerOrder,
       pendingOrderExpireMinutes,
+      pseEnabled: wompiPseEnabled,
       ...links
     });
   } catch (err) {
@@ -1283,6 +1465,7 @@ app.get('/api/config', async (req, res) => {
       currency: 'cop',
       maxStickersPerOrder,
       pendingOrderExpireMinutes,
+      pseEnabled: wompiPseEnabled,
       ...links
     });
   }
