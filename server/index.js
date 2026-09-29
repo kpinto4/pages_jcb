@@ -1146,6 +1146,27 @@ app.post('/api/simulate-payment', async (req, res) => {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Si la orden no se pagó y su última transacción en Wompi terminó rechazada, devuelve el motivo; si no, null.
+ * Las órdenes expiradas cuentan como fallidas. Sin llave privada no se puede consultar por referencia.
+ */
+async function consultarFalloWompi(order) {
+  if (order.status === 'expired') return 'El tiempo para pagar se agotó y los números fueron liberados.';
+  if (!wompiPrivateKey) return null;
+  try {
+    const json = await wompiFetch(`/transactions?reference=${encodeURIComponent(order.id)}`, { key: wompiPrivateKey });
+    const txs = (json?.data || []).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const ultima = txs[0];
+    if (!ultima || !['DECLINED', 'ERROR', 'VOIDED'].includes(ultima.status)) return null;
+    return ultima.status === 'DECLINED'
+      ? 'El banco rechazó el pago o fue cancelado.'
+      : 'El pago no se pudo completar.';
+  } catch (e) {
+    console.warn('No se pudo consultar la transacción en Wompi', order.id, e?.message);
+    return null;
+  }
+}
+
 app.get('/api/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -1160,6 +1181,20 @@ app.get('/api/session/:sessionId', async (req, res) => {
     }
 
     if (order.status !== 'paid') {
+      // El banco rechazó o el cliente abandonó: Wompi deja al cliente en su pantalla de reintento y la orden
+      // seguiría 'pending' hasta expirar. Se consulta la transacción para avisarle a la página que falló.
+      const fallo = await consultarFalloWompi(order);
+      if (fallo) {
+        return res.status(200).json({
+          id: order.id,
+          status: 'failed',
+          failure_message: fallo,
+          customer_email: order.email,
+          amount_total: Number(order.total_cents),
+          currency: order.currency,
+          metadata: {}
+        });
+      }
       return res.status(200).json({
         id: order.id,
         status: 'pending',

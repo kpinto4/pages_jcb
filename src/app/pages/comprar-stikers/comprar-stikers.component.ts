@@ -34,6 +34,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   procesandoPago = false;
   errorPago = '';
   pagoCancelado = false;
+  /** Motivo cuando el banco rechazó el pago o la orden expiró (pantalla "El pago no se completó"). */
+  pagoFallido = '';
 
   /** Precio por stiker en centavos (desde backend; fallback 5000 = $50) */
   precioStikerCents = 5000;
@@ -110,7 +112,13 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     private router: Router
   ) {}
 
+  /** Al volver del banco con "atrás", el navegador puede restaurar la página congelada en "Redirigiendo a tu banco...". */
+  private readonly onPageShow = (e: PageTransitionEvent) => {
+    if (e.persisted) window.location.reload();
+  };
+
   ngOnInit(): void {
+    window.addEventListener('pageshow', this.onPageShow);
     this.paymentService.getConfig().pipe(takeUntil(this.destroy$)).subscribe({
       next: (c) => {
         this.precioStikerCents = c.precioStikerCents ?? 5000;
@@ -162,16 +170,55 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         return;
       }
 
-      if (success && sessionId) {
+      // Si el pago falla, Wompi deja al cliente en su pantalla de reintento y nunca vuelve con ?success.
+      // Cuando regresa a la página por su cuenta, se consulta la orden que había quedado en curso.
+      const id = success && sessionId ? sessionId : this.leerPagoEnCurso();
+      if (id) {
         this.step = 4;
         this.procesandoPago = true;
         this.verificandoVueltaPago = true;
-        this.pollSessionUntilPaid(sessionId, 0);
+        this.pollSessionUntilPaid(id, 0);
       }
     });
   }
 
+  private static readonly PAGO_EN_CURSO_KEY = 'jcb_pago_en_curso';
+  /** Pasado este tiempo la orden ya expiró; no vale la pena seguir mostrándola. */
+  private static readonly PAGO_EN_CURSO_MAX_MS = 2 * 60 * 60 * 1000;
+
+  private guardarPagoEnCurso(orderId: string): void {
+    try {
+      localStorage.setItem(ComprarStikersComponent.PAGO_EN_CURSO_KEY, JSON.stringify({ id: orderId, at: Date.now() }));
+    } catch { /* sin almacenamiento: solo se pierde la recuperación al volver */ }
+  }
+
+  private leerPagoEnCurso(): string | null {
+    try {
+      const raw = localStorage.getItem(ComprarStikersComponent.PAGO_EN_CURSO_KEY);
+      const data = raw ? JSON.parse(raw) : null;
+      if (data?.id && Date.now() - Number(data.at) < ComprarStikersComponent.PAGO_EN_CURSO_MAX_MS) return String(data.id);
+      this.borrarPagoEnCurso();
+    } catch { /* ignorar */ }
+    return null;
+  }
+
+  private borrarPagoEnCurso(): void {
+    try {
+      localStorage.removeItem(ComprarStikersComponent.PAGO_EN_CURSO_KEY);
+    } catch { /* ignorar */ }
+  }
+
+  /** Desde "El pago no se completó": vuelve a la selección de números. */
+  reintentarCompra(): void {
+    this.pagoFallido = '';
+    this.errorConfirmacionPago = '';
+    this.successData = null;
+    this.pagoEnVerificacion = false;
+    this.step = 1;
+  }
+
   ngOnDestroy(): void {
+    window.removeEventListener('pageshow', this.onPageShow);
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -181,12 +228,37 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
   private pollSessionUntilPaid(sessionId: string, attempt: number): void {
     this.paymentService.getSessionDetails(sessionId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (session) => {
-        if (session?.status === 'pending') {
+        if (!session) {
+          this.borrarPagoEnCurso();
+          this.procesandoPago = false;
+          this.verificandoVueltaPago = false;
+          this.pagoEnVerificacion = false;
+          this.successData = null;
+          this.errorConfirmacionPago =
+            'No pudimos confirmar tu pago con el servidor. Si ya pagaste, usa Verificar Stiker con tu cédula en unos minutos.';
+          this.step = 4;
+          this.limpiarQueryParams();
+          return;
+        }
+        if (session.status === 'failed') {
+          this.borrarPagoEnCurso();
+          this.procesandoPago = false;
+          this.verificandoVueltaPago = false;
+          this.pagoEnVerificacion = false;
+          this.successData = null;
+          this.pagoFallido = session.failure_message || 'El pago no se pudo completar.';
+          this.step = 4;
+          this.limpiarQueryParams();
+          return;
+        }
+        if (session.status === 'pending') {
           if (attempt < ComprarStikersComponent.MAX_SESSION_POLL_ATTEMPTS) {
             setTimeout(() => this.pollSessionUntilPaid(sessionId, attempt + 1), 2000);
             return;
           }
-          // Agotamos intentos: el pago aún no fue confirmado por el webhook
+          // Agotamos intentos: el pago aún no fue confirmado por el webhook.
+          // Se olvida la orden para no bloquear la página en cada visita; el estado queda en Verificar Stiker.
+          this.borrarPagoEnCurso();
           this.procesandoPago = false;
           this.verificandoVueltaPago = false;
           this.pagoEnVerificacion = true;
@@ -194,6 +266,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
           this.limpiarQueryParams();
           return;
         }
+        this.borrarPagoEnCurso();
         this.procesandoPago = false;
         this.verificandoVueltaPago = false;
         this.pagoEnVerificacion = false;
@@ -226,6 +299,14 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       amountTotal: amount,
       stikersDetail: session.metadata?.['stikersDetail'] || undefined
     };
+  }
+
+  /** Parejas pagadas (pantalla de éxito): salen de stikersDetail ("A-B, C-D") porque al volver del banco la selección ya no está en memoria. */
+  get numerosPagados(): { numeroA: string; numeroB: string }[] {
+    const detail = this.successData?.stikersDetail || '';
+    const pares = [...detail.matchAll(/(\d+)\s*-\s*(\d+)/g)].map(m => ({ numeroA: m[1], numeroB: m[2] }));
+    if (pares.length) return pares;
+    return this.seleccionados;
   }
 
   private limpiarQueryParams(): void {
@@ -504,6 +585,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
       }).pipe(takeUntil(this.destroy$)).subscribe({
         next: (res) => {
           if (res?.redirectUrl) {
+            if (res.sessionId) this.guardarPagoEnCurso(res.sessionId);
             window.location.href = res.redirectUrl;
           } else {
             this.procesandoPago = false;
@@ -521,6 +603,7 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     this.paymentService.createCheckoutSession(solicitud).subscribe({
       next: (res) => {
         if (res?.checkoutUrl) {
+          if (res.sessionId) this.guardarPagoEnCurso(res.sessionId);
           window.location.href = res.checkoutUrl;
         } else {
           this.procesandoPago = false;

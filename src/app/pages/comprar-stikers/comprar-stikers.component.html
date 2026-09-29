@@ -204,15 +204,6 @@
       El pago fue cancelado. Puedes intentar de nuevo o volver atrás.
     </p>
 
-    <div *ngIf="seleccionados.length > 0" class="seleccion-resumen-box seleccion-resumen-box--pago" role="region" aria-label="Stikers en este pago">
-      <p class="seleccion-resumen-titulo">Incluidos en este pago · {{ seleccionados.length }} stiker(s)</p>
-      <ul class="seleccion-resumen-lista">
-        <li *ngFor="let s of seleccionados">
-          <span class="pair">{{ s.numeroA }}</span><span class="sep" aria-hidden="true">–</span><span class="pair">{{ s.numeroB }}</span>
-        </li>
-      </ul>
-    </div>
-
     <form *ngIf="pseEnabled && !procesandoPago" class="form-pse">
       <div class="form-group">
         <label for="pse-persona">Tipo de persona</label>
@@ -291,6 +282,17 @@
     </div>
   </div>
 
+  <!-- PASO 4: el banco rechazó el pago o la orden expiró -->
+  <div *ngIf="step === 4 && !verificandoVueltaPago && pagoFallido" class="panel confirmacion confirmacion-pendiente">
+    <h3>El pago no se completó</h3>
+    <p>{{ pagoFallido }}</p>
+    <p>No se hizo ningún cobro. Puedes elegir tus números y volver a intentarlo.</p>
+    <div class="acciones-finales">
+      <a routerLink="/" class="btn-outline">Volver al inicio</a>
+      <button type="button" class="btn-primary" (click)="reintentarCompra()">Intentar de nuevo</button>
+    </div>
+  </div>
+
   <!-- PASO 4: no se pudo confirmar el pago -->
   <div *ngIf="step === 4 && !verificandoVueltaPago && !pagoEnVerificacion && !successData && errorConfirmacionPago" class="panel confirmacion confirmacion-pendiente">
     <h3>No pudimos confirmar tu pago</h3>
@@ -311,13 +313,14 @@
     </p>
     <p *ngIf="!successData.customerName && !successData.customerEmail">Tu pago se ha procesado correctamente.</p>
 
-    <p class="stikers-detail" *ngIf="successData.stikersDetail">
-      {{ successData.stikersDetail }}
-    </p>
-
-    <ul *ngIf="seleccionados.length > 0">
-      <li *ngFor="let s of seleccionados">{{ s.numeroA }} - {{ s.numeroB }}</li>
-    </ul>
+    <div *ngIf="numerosPagados.length > 0" class="seleccion-resumen-box seleccion-resumen-box--pago" role="region" aria-label="Números asignados">
+      <p class="seleccion-resumen-titulo">Números asignados</p>
+      <ul class="seleccion-resumen-lista">
+        <li *ngFor="let s of numerosPagados">
+          <span class="pair">{{ s.numeroA }}</span><span class="sep" aria-hidden="true">–</span><span class="pair">{{ s.numeroB }}</span>
+        </li>
+      </ul>
+    </div>
 
     <p class="total">Total pagado: {{ formatearPrecio(successData.amountTotal, currency) }}</p>
 

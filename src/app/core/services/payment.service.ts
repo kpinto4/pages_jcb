@@ -47,8 +47,9 @@ export interface SessionDetails {
   amount_total?: number | null;
   currency?: string | null;
   metadata?: Record<string, string>;
-  /** Wompi: orden aún no confirmada por webhook */
-  status?: 'pending';
+  /** Wompi: 'pending' = aún no confirmada por webhook; 'failed' = el banco la rechazó o la orden expiró */
+  status?: 'pending' | 'failed';
+  failure_message?: string;
 }
 
 export interface ShopConfig {
