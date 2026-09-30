@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import fs from 'fs';
 import { initDb } from './db-adapter.js';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 
 let enviarComprobanteTrasPago = async () => {};
 let verificarSmtp = async () => ({ configured: false, ok: false, error: 'Módulo de correo no cargado' });
@@ -176,11 +176,29 @@ function ventasCerradasPorHora(sorteo) {
   return Date.now() >= cierre;
 }
 
+/**
+ * IP real del cliente. El API solo es accesible a través de Cloudflare (el puerto del origen no está expuesto),
+ * que envía la IP del visitante en CF-Connecting-IP. Sin esto, req.ip es la del proxy y todos los visitantes
+ * compartían el mismo cupo de los rate limits (bastaban 40 consultas en total para bloquear a todos).
+ */
+function clientIp(req) {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf.trim()) return cf.trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) return xff.split(',')[0].trim();
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
 /** Rate limit en memoria por clave (IP + ruta). */
 function createRateLimiter({ windowMs, max, keyPrefix }) {
   const hits = new Map();
+  // Limpieza periódica: sin ella el Map crece con cada IP distinta que llegue.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, b] of hits) if (now - b.start > windowMs) hits.delete(k);
+  }, windowMs).unref();
   return (req, res, next) => {
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = clientIp(req);
     const key = `${keyPrefix}:${ip}`;
     const now = Date.now();
     let bucket = hits.get(key);
@@ -200,6 +218,8 @@ function createRateLimiter({ windowMs, max, keyPrefix }) {
 
 const loginRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'login' });
 const verificarRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 40, keyPrefix: 'verificar' });
+/** Crear pagos reserva números 30 min: sin límite, alguien podría reservar toda la grilla sin pagar. */
+const pagoRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'pago' });
 /** Intervalo de la tarea de limpieza: a lo sumo la mitad del tiempo de expiración, entre 5 y 15 min. */
 const pendingCleanupIntervalMs = Math.max(
   5 * 60 * 1000,
@@ -273,6 +293,15 @@ const dateCmpGt = isPg ? '(fecha::date) > (?::date)' : 'date(fecha) > date(?)';
 
 // CORS: en producción define ALLOWED_ORIGIN (ej. https://tudominio.com). En desarrollo acepta cualquier origen.
 const corsOrigin = process.env.ALLOWED_ORIGIN || true;
+app.disable('x-powered-by');
+// Cabeceras de seguridad básicas (el API solo devuelve JSON/CSV: nada debe embeberse ni interpretarse como HTML).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 // Si la DB no cargó, solo permitir health y admin/login
@@ -309,12 +338,18 @@ app.get('/api/health', (req, res) => {
     nodeEnv: process.env.NODE_ENV || 'development',
     adminConfigured: !!process.env.ADMIN_PASSWORD,
     hasDatabase: !!process.env.DATABASE_URL,
-    dbConnected: !!db,
-    dbError: dbInitError || undefined
+    dbConnected: !!db
   });
 });
 
 // ----- ADMIN LOGIN (público, antes del middleware) -----
+
+/** Comparación en tiempo constante (evita deducir la contraseña midiendo cuánto tarda la respuesta). */
+function mismoTexto(a, b) {
+  const ha = createHash('sha256').update(String(a)).digest();
+  const hb = createHash('sha256').update(String(b)).digest();
+  return timingSafeEqual(ha, hb);
+}
 
 app.post('/api/admin/login', loginRateLimit, (req, res) => {
   try {
@@ -327,7 +362,7 @@ app.post('/api/admin/login', loginRateLimit, (req, res) => {
     if (!password) {
       return res.status(400).json({ error: 'Falta la contraseña' });
     }
-    if (password !== adminPassword) {
+    if (!mismoTexto(password, adminPassword)) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
@@ -1010,7 +1045,7 @@ function resolverRedirectUrl(successUrl, orderId) {
   return redirectUrl;
 }
 
-app.post('/api/create-checkout-session', async (req, res) => {
+app.post('/api/create-checkout-session', pagoRateLimit, async (req, res) => {
   try {
     const { amount, customerEmail, successUrl, cancelUrl } = req.body;
 
@@ -1110,7 +1145,7 @@ app.get('/api/pse/bancos', async (req, res) => {
 
 const PSE_ID_TYPES = ['CC', 'CE', 'NIT'];
 
-app.post('/api/create-pse-payment', async (req, res) => {
+app.post('/api/create-pse-payment', pagoRateLimit, async (req, res) => {
   if (!wompiPseEnabled) {
     return res.status(503).json({ error: 'El pago directo con PSE no está habilitado.' });
   }
