@@ -1,57 +1,60 @@
 {
-    "name": "pages-jcb",
-    "version": "0.0.0",
-    "type": "module",
-    "engines": {
-      "node": ">=18.0.0"
-    },
-    "scripts": {
-      "ng": "ng",
-      "start": "node scripts/start.cjs",
-      "start:dev": "npm run dev",
-      "build": "ng build --configuration production",
-      "install-all": "npm install && npm install --prefix server",
-      "predev": "node -e \"const fs=require('fs');const p='server/.env';if(!fs.existsSync(p)){console.error('\\nFalta server/.env. Ejecuta: copy server\\\\.env.example server\\\\.env\\nLuego edita DATABASE_URL y ADMIN_PASSWORD.\\n');process.exit(1);}const t=fs.readFileSync(p,'utf8');if(!/DATABASE_URL=\\s*postgres/i.test(t)){console.error('\\nserver/.env: define DATABASE_URL (postgresql://...) para el backend local.\\n');process.exit(1);}\"",
-      "dev": "concurrently -n front,back -c cyan,green \"ng serve\" \"npm run dev --prefix server\"",
-      "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke-dev.ps1",
-      "prod": "npm run build && concurrently -n front,back -c cyan,green \"npx serve -s dist/pages_jcb/browser -l 3015\" \"npm run start:prod --prefix server\"",
-      "watch": "ng build --watch --configuration development",
-      "test": "ng test"
-    },
-    "private": true,
-    "dependencies": {
-      "@angular/common": "^19.2.0",
-      "@angular/compiler": "^19.2.0",
-      "@angular/core": "^19.2.0",
-      "@angular/forms": "^19.2.0",
-      "@angular/platform-browser": "^19.2.0",
-      "@angular/platform-browser-dynamic": "^19.2.0",
-      "@angular/router": "^19.2.0",
-      "@neondatabase/serverless": "^1.0.0",
-      "cors": "^2.8.5",
-      "dotenv": "^16.4.5",
-      "express": "^4.21.0",
-      "jsonwebtoken": "^9.0.3",
-      "multer": "^1.4.5-lts.1",
-      "pg": "^8.13.0",
-      "rxjs": "~7.8.0",
-      "stripe": "^17.4.0",
-      "tslib": "^2.3.0",
-      "ws": "^8.18.0",
-      "zone.js": "~0.15.0"
-    },
-    "devDependencies": {
-      "concurrently": "^9.1.0",
-      "@angular-devkit/build-angular": "^19.2.7",
-      "@angular/cli": "^19.2.7",
-      "@angular/compiler-cli": "^19.2.0",
-      "@types/jasmine": "~5.1.0",
-      "jasmine-core": "~5.6.0",
-      "karma": "~6.4.0",
-      "karma-chrome-launcher": "~3.2.0",
-      "karma-coverage": "~2.2.0",
-      "karma-jasmine": "~5.1.0",
-      "karma-jasmine-html-reporter": "~2.1.0",
-      "typescript": "~5.7.2"
-    }
+  "name": "pages-jcb",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "ng": "ng",
+    "start": "node scripts/start.cjs",
+    "start:dev": "npm run dev",
+    "build": "ng build --configuration production",
+    "install-all": "npm install && npm install --prefix server",
+    "predev": "node -e \"const fs=require('fs');const p='server/.env';if(!fs.existsSync(p)){console.error('\\nFalta server/.env. Ejecuta: copy server\\\\.env.example server\\\\.env\\nLuego edita DATABASE_URL y ADMIN_PASSWORD.\\n');process.exit(1);}const t=fs.readFileSync(p,'utf8');if(!/DATABASE_URL=\\s*postgres/i.test(t)){console.error('\\nserver/.env: define DATABASE_URL (postgresql://...) para el backend local.\\n');process.exit(1);}\"",
+    "dev": "concurrently -n front,back -c cyan,green \"ng serve\" \"npm run dev --prefix server\"",
+    "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke-dev.ps1",
+    "prod": "npm run build && concurrently -n front,back -c cyan,green \"npx serve -s dist/pages_jcb/browser -l 3015\" \"npm run start:prod --prefix server\"",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^20.3.32",
+    "@angular/compiler": "^20.3.32",
+    "@angular/core": "^20.3.32",
+    "@angular/forms": "^20.3.32",
+    "@angular/platform-browser": "^20.3.32",
+    "@angular/platform-browser-dynamic": "^20.3.32",
+    "@angular/router": "^20.3.32",
+    "@neondatabase/serverless": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.13.0",
+    "rxjs": "~7.8.0",
+    "stripe": "^17.4.0",
+    "tslib": "^2.3.0",
+    "ws": "^8.18.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "@angular-devkit/build-angular": "^20.3.37",
+    "@angular/cli": "^20.3.37",
+    "@angular/compiler-cli": "^20.3.32",
+    "@types/jasmine": "~5.1.0",
+    "jasmine-core": "~5.6.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "electron-to-chromium": "1.5.442"
   }
+}
