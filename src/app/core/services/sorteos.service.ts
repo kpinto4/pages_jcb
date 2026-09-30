@@ -35,7 +35,9 @@ export interface AnticipadoHome {
 export interface HomeSorteosResponse {
   principal: Sorteo | null;
   anticipadosActuales: AnticipadoHome[];
-  mayoresRealizados: (Sorteo & { ganador_nombre?: string; ganador_cedula?: string; ganador_email?: string; ganador_telefono?: string })[];
+  mayoresRealizados: (Sorteo & { ganador_nombre?: string })[];
+  /** Último Premio Mayor realizado, solo cuando no hay sorteo activo (se destaca en el inicio). */
+  ultimoGanador?: (Sorteo & { ganador_nombre?: string }) | null;
 }
 
 export interface ProgresoResponse {

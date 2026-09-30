@@ -69,6 +69,20 @@ export interface SorteoGanadorResponse {
   } | null;
 }
 
+/** Lo que reemplazaría crear un Premio Mayor nuevo (panel de confirmación del admin). */
+export interface ResumenReemplazo {
+  activo: { id: number; nombre: string; fecha: string; hora_sorteo?: string | null } | null;
+  campana: {
+    sorteo: { id: number; nombre: string; fecha: string; estado: string } | null;
+    comprasPagadas: number;
+    numerosVendidos: number;
+    totalCents: number;
+    pagosEnCurso: number;
+  };
+  bloqueado: boolean;
+  motivoBloqueo: string | null;
+}
+
 export interface BeneficioAnticipado {
   id: number;
   sorteo_id: number;
@@ -152,9 +166,7 @@ export class AdminService {
   }
 
   confirmCashOrder(id: string): Observable<AdminOrder | null> {
-    return this.http.post<AdminOrder>(`${this.base}/api/admin/orders/${id}/confirm-cash`, {}).pipe(
-      catchError((err) => (err?.status === 401 ? throwError(() => err) : of(null)))
-    );
+    return this.http.post<AdminOrder>(`${this.base}/api/admin/orders/${id}/confirm-cash`, {});
   }
 
   getSorteos(): Observable<{ sorteos: Sorteo[] } | null> {
@@ -163,10 +175,22 @@ export class AdminService {
     );
   }
 
-  createSorteo(body: { nombre: string; fecha: string; hora_sorteo?: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string }): Observable<Sorteo | null> {
+  createSorteo(body: { nombre: string; fecha: string; hora_sorteo?: string; descripcion?: string; tipo?: string; premio_descripcion?: string; imagen_url?: string; numeros_beneficiados?: string; confirmarReemplazo?: boolean }): Observable<Sorteo | null> {
     return this.http.post<Sorteo>(`${this.base}/api/admin/sorteos`, body).pipe(
       catchError((err) => (err?.status === 401 ? throwError(() => err) : throwError(() => err)))
     );
+  }
+
+  getResumenReemplazo(): Observable<ResumenReemplazo> {
+    return this.http.get<ResumenReemplazo>(`${this.base}/api/admin/sorteos/resumen-reemplazo`);
+  }
+
+  /** CSV (Excel) con las ventas pagadas de un Premio Mayor, vigentes o ya archivadas. */
+  descargarInformeVentas(sorteoId: number): Observable<Blob> {
+    return this.http.get(`${this.base}/api/admin/informe-ventas`, {
+      params: { sorteoId: String(sorteoId) },
+      responseType: 'blob'
+    });
   }
 
   updateSorteo(id: number, body: Partial<{ nombre: string; fecha: string; hora_sorteo: string; descripcion: string; premio_descripcion: string; imagen_url: string; numeros_beneficiados: string }>): Observable<Sorteo | null> {

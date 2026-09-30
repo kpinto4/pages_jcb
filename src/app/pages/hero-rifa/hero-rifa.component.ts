@@ -27,6 +27,8 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
 
   // Sorteo principal (premio mayor)
   principal: Sorteo | null = null;
+  /** Último Premio Mayor realizado; solo se usa mientras no hay sorteo activo. */
+  ultimoGanador: (Sorteo & { ganador_nombre?: string }) | null = null;
   heroImageUrl = 'assets/img/premio-mayor.jpg';
   /** true cuando ya pasó la hora de cierre de ventas del sorteo de hoy (hora_sorteo - 1h). */
   ventasCerradas = false;
@@ -76,7 +78,16 @@ export class HeroRifaComponent implements OnInit, OnDestroy {
             return;
           }
           this.principal = data.principal ?? null;
-          if (!this.principal) return;
+          this.ultimoGanador = this.principal ? null : (data.ultimoGanador ?? null);
+          this.heroImgLoaded = false;
+          this.heroImgFailed = false;
+          if (!this.principal) {
+            // Sin sorteo activo: se destaca el último ganador (foto del ganador o, si no hay, la del premio).
+            if (this.ultimoGanador) {
+              this.heroImageUrl = resolveImageUrl(this.ultimoGanador.imagen_url) || 'assets/img/premio-mayor.jpg';
+            }
+            return;
+          }
 
           this.ventasCerradas = !!this.principal.ventasCerradas;
           this.heroImgLoaded = false;

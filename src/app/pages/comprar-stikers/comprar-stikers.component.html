@@ -186,6 +186,10 @@
         <label for="ciudad">Ciudad</label>
         <input id="ciudad" type="text" placeholder="Ej. Medellín" [(ngModel)]="cliente.ciudad" name="ciudad">
       </div>
+      <label class="form-check" for="acepta-whatsapp">
+        <input id="acepta-whatsapp" type="checkbox" [(ngModel)]="cliente.aceptaWhatsapp" name="aceptaWhatsapp">
+        <span>Acepto recibir por WhatsApp información sobre nuevos sorteos y recordatorios. <small>(Opcional)</small></span>
+      </label>
     </form>
 
     <p class="error-msg" *ngIf="errorPago">{{ errorPago }}</p>

@@ -162,6 +162,56 @@
     color: var(--text);
   }
 
+  .hero-ganador {
+    margin-bottom: 1.2rem;
+
+    h1 {
+      margin-top: 0.75rem;
+    }
+  }
+
+  .hero-ganador-badge {
+    display: inline-block;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .hero-ganador-numero {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+
+    small {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    strong {
+      font-size: 1.9rem;
+      letter-spacing: 0.05em;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+    }
+  }
+
+  .hero-text .hero-ganador-nombre {
+    color: var(--text);
+    font-size: 1.15rem;
+  }
+
+  .hero-text .hero-ganador-proximo {
+    margin-bottom: 0;
+  }
+
   .countdown {
     display: flex;
     gap: 1rem;

@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico, ResumenReemplazo } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -13,6 +13,8 @@ import { AdminAuthService } from '../../core/services/admin-auth.service';
   styleUrl: './admin.component.scss'
 })
 export class AdminComponent implements OnInit, OnDestroy {
+  /** Premios anticipados por Premio Mayor (igual que NUM_ANTICIPADOS en el servidor). */
+  static readonly NUM_ANTICIPADOS = 6;
 
   loggedIn = false;
   password = '';
@@ -96,6 +98,10 @@ export class AdminComponent implements OnInit, OnDestroy {
   imagenFile: File | null = null;
   editImagenFile: File | null = null;
   guardandoSorteo = false;
+  /** Panel de confirmación al crear un Premio Mayor: qué campaña se reemplaza (null = cerrado). */
+  resumenReemplazo: ResumenReemplazo | null = null;
+  cargandoResumen = false;
+  descargandoInformeId: number | null = null;
   realizandoId: number | null = null;
   eliminandoSorteoId: number | null = null;
 
@@ -109,7 +115,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     /** Precio por stiker en unidades de la moneda (COP, USD, etc.), no en centavos */
     precioStikerUnidad: 5000,
     currency: 'cop',
-    anticipadosPercent: Array.from({ length: 10 }, () => 100)
+    anticipadosPercent: Array.from({ length: AdminComponent.NUM_ANTICIPADOS }, () => 100)
   };
   guardandoConfig = false;
   configGuardada = false;
@@ -301,8 +307,8 @@ export class AdminComponent implements OnInit, OnDestroy {
             const n = parseInt(p, 10);
             return !isNaN(n) && n > 0 && n <= 100 ? n : 100;
           });
-          while (arr.length < 10) arr.push(100);
-          this.config.anticipadosPercent = arr.slice(0, 10);
+          while (arr.length < AdminComponent.NUM_ANTICIPADOS) arr.push(100);
+          this.config.anticipadosPercent = arr.slice(0, AdminComponent.NUM_ANTICIPADOS);
         }
       },
       error: (err) => {
@@ -370,9 +376,20 @@ export class AdminComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         if (err?.status === 401) this.on401();
+        else this.error = err?.error?.error || 'No se pudo confirmar el pago.';
         this.confirmandoId = null;
       }
     });
+  }
+
+  /** Solo se puede confirmar en efectivo una orden que aún tiene sus números reservados. */
+  puedeConfirmarEfectivo(o: AdminOrder): boolean {
+    return o.status !== 'paid' && Number(o.items_count) > 0;
+  }
+
+  etiquetaEstadoOrden(status: string): string {
+    const etiquetas: Record<string, string> = { paid: 'Pagado', pending: 'Pendiente', expired: 'Cancelado', declined: 'Rechazado' };
+    return etiquetas[status] || status;
   }
 
   cargarSorteos(): void {
@@ -470,6 +487,50 @@ export class AdminComponent implements OnInit, OnDestroy {
       return;
     }
     this.error = '';
+    this.cargandoResumen = true;
+    this.adminService.getResumenReemplazo().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.cargandoResumen = false;
+        this.resumenReemplazo = r;
+        setTimeout(() => document.getElementById('panel-reemplazo')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      },
+      error: (err) => {
+        this.cargandoResumen = false;
+        if (err?.status === 401) this.on401();
+        else this.error = err?.error?.error || 'No se pudo revisar el sorteo actual.';
+      }
+    });
+  }
+
+  cancelarReemplazo(): void {
+    this.resumenReemplazo = null;
+  }
+
+  descargarInforme(sorteoId: number, nombre: string): void {
+    this.descargandoInformeId = sorteoId;
+    this.adminService.descargarInformeVentas(sorteoId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (blob) => {
+        this.descargandoInformeId = null;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ventas-${nombre.normalize('NFD').replace(/[^\w-]+/g, '-')}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: (err) => {
+        this.descargandoInformeId = null;
+        if (err?.status === 401) this.on401();
+        else this.error = 'No se pudo descargar el informe de ventas.';
+      }
+    });
+  }
+
+  /** Desde el panel de resumen: archiva y reemplaza la campaña anterior y crea el Premio Mayor nuevo. */
+  confirmarReemplazo(): void {
+    if (!this.resumenReemplazo || this.resumenReemplazo.bloqueado) return;
+    const imagenUrl = this.nuevoSorteo.imagen_url?.trim();
+    this.error = '';
     this.guardandoSorteo = true;
 
     const doCreate = (url: string) => {
@@ -480,12 +541,16 @@ export class AdminComponent implements OnInit, OnDestroy {
         descripcion: this.nuevoSorteo.descripcion.trim() || undefined,
         tipo: 'mayor',
         premio_descripcion: this.nuevoSorteo.premio_descripcion.trim() || undefined,
-        imagen_url: url
+        imagen_url: url,
+        confirmarReemplazo: true
       }).pipe(takeUntil(this.destroy$)).subscribe({
         next: (s) => {
           this.guardandoSorteo = false;
           if (s) {
+            this.resumenReemplazo = null;
             this.cargarSorteos();
+            this.cargarOrders();
+            this.cargarStats();
             this.nuevoSorteo = { nombre: '', fecha: '', hora_sorteo: '', descripcion: '', premio_descripcion: '', imagen_url: '' };
             this.imagenFile = null;
             this.error = '';

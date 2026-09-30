@@ -91,6 +91,58 @@ if (db && process.env.DATABASE_URL) {
     console.warn('Seed stiker_slots:', e.message);
   }
 }
+// Columnas y tablas que no siempre existen en la BD: se crean al arrancar para no depender de migraciones manuales.
+// - orders.payment_reference: la usa el webhook de Wompi; sin ella el UPDATE a 'paid' fallaba.
+// - clientes: datos de contacto que sobreviven a cada sorteo (base para el CRM de WhatsApp).
+// - ventas_historial: copia de las ventas pagadas de un sorteo antes de reemplazarlo por uno nuevo.
+if (db) {
+  try {
+    await db.exec(`
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT;
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS acepta_whatsapp BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS clientes (
+        id SERIAL PRIMARY KEY,
+        cedula TEXT NOT NULL UNIQUE,
+        nombre TEXT,
+        email TEXT,
+        telefono TEXT,
+        ciudad TEXT,
+        acepta_whatsapp BOOLEAN NOT NULL DEFAULT FALSE,
+        acepta_whatsapp_at TIMESTAMPTZ,
+        total_compras INTEGER NOT NULL DEFAULT 0,
+        total_numeros INTEGER NOT NULL DEFAULT 0,
+        total_gastado_cents BIGINT NOT NULL DEFAULT 0,
+        ultimo_sorteo_id INTEGER,
+        primera_compra_at TIMESTAMPTZ,
+        ultima_compra_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS ventas_historial (
+        id SERIAL PRIMARY KEY,
+        order_id TEXT NOT NULL UNIQUE,
+        sorteo_id INTEGER,
+        sorteo_nombre TEXT,
+        sorteo_fecha TEXT,
+        fecha_compra TIMESTAMPTZ,
+        cedula TEXT,
+        nombre TEXT,
+        email TEXT,
+        telefono TEXT,
+        ciudad TEXT,
+        numeros TEXT,
+        cantidad_numeros INTEGER NOT NULL DEFAULT 0,
+        total_cents BIGINT NOT NULL DEFAULT 0,
+        currency TEXT,
+        payment_reference TEXT,
+        archivado_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ventas_historial_sorteo ON ventas_historial(sorteo_id)
+    `);
+  } catch (e) {
+    console.warn('No se pudieron crear las tablas clientes/ventas_historial:', e.message);
+  }
+}
+
 /** Órdenes `pending` sin pago: liberar stikers tras este tiempo (min). Rango 5–30; por defecto 30. */
 const pendingOrderExpireMinutes = Math.min(30, Math.max(5, Number.parseInt(process.env.PENDING_ORDER_EXPIRE_MINUTES ?? '30', 10) || 30));
 /** Máximo de stikers por compra (evita saturación). Rango 1–100; por defecto 50. */
@@ -411,25 +463,27 @@ app.post('/api/admin/upload-image', upload.single('image'), (req, res) => {
  */
 async function limpiarPendientesExpirados(ageMinutes = pendingOrderExpireMinutes) {
   const cutoff = new Date(Date.now() - ageMinutes * 60 * 1000).toISOString();
+  // Las rechazadas ('declined') conservan sus stikers el mismo tiempo que una pendiente, por si el cliente
+  // reintenta desde la pantalla de Wompi con la misma referencia; después se liberan pero siguen 'declined'.
+  const porLiberar = `
+    SELECT id FROM orders
+    WHERE created_at < ?
+      AND (status = 'pending'
+        OR (status = 'declined' AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = orders.id)))
+  `;
   // Contar cuántas órdenes serán afectadas antes de modificar
-  const countRow = await db.prepare(
-    `SELECT COUNT(*) AS n FROM orders WHERE status = 'pending' AND created_at < ?`
-  ).get(cutoff);
+  const countRow = await db.prepare(`SELECT COUNT(*) AS n FROM (${porLiberar}) t`).get(cutoff);
   const n = Number(countRow?.n ?? 0);
   if (n === 0) return 0;
   // Liberar stiker_slots de esas órdenes
   await db.prepare(`
     UPDATE stiker_slots SET order_id = NULL
-    WHERE order_id IN (
-      SELECT id FROM orders WHERE status = 'pending' AND created_at < ?
-    )
+    WHERE order_id IN (${porLiberar})
   `).run(cutoff);
   // Eliminar order_items de esas órdenes
   await db.prepare(`
     DELETE FROM order_items
-    WHERE order_id IN (
-      SELECT id FROM orders WHERE status = 'pending' AND created_at < ?
-    )
+    WHERE order_id IN (${porLiberar})
   `).run(cutoff);
   // Marcar las órdenes como 'expired' para no perder el historial
   await db.prepare(
@@ -512,9 +566,12 @@ async function getPctStikersVendidos() {
   return (totalSold / totalSlots) * 100;
 }
 
+/** Premios anticipados que se crean con cada Premio Mayor (y filas de umbrales en el admin). */
+const NUM_ANTICIPADOS = 6;
+
 /**
- * Umbrales % vendido (10 filas en admin: 10%, 20%, …).
- * Cada umbral cumplido suma 1 cupo de premio anticipado en la campaña (máx. 10).
+ * Umbrales % vendido (una fila por anticipado en el admin).
+ * Cada umbral cumplido suma 1 cupo de premio anticipado en la campaña (máx. NUM_ANTICIPADOS).
  */
 async function getAnticipadosPercentThresholds() {
   const cfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipados_percent'").get();
@@ -522,21 +579,21 @@ async function getAnticipadosPercentThresholds() {
     const raw = cfg.value.split(',').map((p) => parseInt(String(p).trim(), 10));
     const arr = raw
       .filter((n) => !isNaN(n) && n > 0 && n <= 100)
-      .slice(0, 10);
-    while (arr.length < 10) arr.push(100);
+      .slice(0, NUM_ANTICIPADOS);
+    while (arr.length < NUM_ANTICIPADOS) arr.push(100);
     return arr;
   }
   const stepCfg = await db.prepare("SELECT value FROM config WHERE key = 'anticipado_step_percent'").get();
   const step = stepCfg ? Math.round(Number(stepCfg.value)) : null;
   if (step && Number.isFinite(step) && step > 0) {
-    return Array.from({ length: 10 }, (_, i) => Math.min(100, step * (i + 1)));
+    return Array.from({ length: NUM_ANTICIPADOS }, (_, i) => Math.min(100, step * (i + 1)));
   }
-  return Array.from({ length: 10 }, () => 100);
+  return Array.from({ length: NUM_ANTICIPADOS }, () => 100);
 }
 
 /**
  * Cupos de premios anticipados según % vendido.
- * Ej. umbrales [10,20,30…]: al 15% hay 1 cupo; al 25% hay 2. Cualquiera de los 10 anticipados
+ * Ej. umbrales [10,20,30…]: al 15% hay 1 cupo; al 25% hay 2. Cualquiera de los anticipados
  * puede ganar si el cliente compra su número bendecido (no hace falta ir en orden 1→2→3).
  */
 function maxCuposAnticipados(pctVendido, thresholds) {
@@ -645,6 +702,10 @@ function sorteoPublico(row) {
   if ((out.tipo || '').toLowerCase() === 'anticipado') {
     delete out.numeros_beneficiados;
   }
+  // Datos de contacto del ganador: solo para el admin, nunca en endpoints públicos.
+  delete out.ganador_cedula;
+  delete out.ganador_email;
+  delete out.ganador_telefono;
   return out;
 }
 
@@ -720,7 +781,7 @@ app.get('/api/stikers', async (req, res) => {
              ss.numero_b AS "numeroB",
              CASE
                WHEN ss.order_id IS NOT NULL AND o.status = 'paid' THEN 'ocupado'
-               WHEN ss.order_id IS NOT NULL AND o.status = 'pending' THEN 'reservado'
+               WHEN ss.order_id IS NOT NULL AND o.status IN ('pending', 'declined') THEN 'reservado'
                ELSE 'libre'
              END AS estado
       FROM stiker_slots ss
@@ -738,6 +799,14 @@ app.get('/api/stikers', async (req, res) => {
 
 // ----- STIKERS POR CÉDULA (verificar compras) -----
 
+/** Estado de la orden (BD) → estado que ve el cliente. */
+const ESTADO_COMPRA = {
+  paid: 'pagado',
+  pending: 'pendiente',
+  expired: 'cancelado',
+  declined: 'rechazado'
+};
+
 app.get('/api/verificar-stikers', verificarRateLimit, async (req, res) => {
   try {
     const cedula = (req.query.cedula || '').trim();
@@ -745,29 +814,43 @@ app.get('/api/verificar-stikers', verificarRateLimit, async (req, res) => {
       return res.status(400).json({ error: 'Falta el parámetro cedula' });
     }
 
+    // La tabla orders solo guarda la campaña vigente: la del sorteo activo o, si ya se realizó, la del último
+    // hasta que se cree el siguiente (ahí se archiva en ventas_historial y se vacía).
     const orders = await db.prepare(`
-      SELECT id, stripe_session_id, status, total_cents, created_at
-      FROM orders
-      WHERE cedula = ? AND status = 'paid'
-      ORDER BY created_at DESC
+      SELECT o.id, o.status, o.total_cents, o.currency, o.created_at, o.sorteo_mayor_id,
+             s.nombre AS sorteo_nombre, s.fecha AS sorteo_fecha, s.estado AS sorteo_estado
+      FROM orders o
+      LEFT JOIN sorteos s ON s.id = o.sorteo_mayor_id
+      WHERE o.cedula = ? AND o.status IN ('paid', 'pending', 'expired', 'declined')
+      ORDER BY CASE WHEN o.status = 'pending' THEN 0 ELSE 1 END, o.created_at DESC
     `).all(cedula);
 
-    const stikers = [];
+    const precioCents = await getPrecioStikerCents();
+    const compras = [];
     for (const order of orders) {
       const items = await db.prepare(`
         SELECT numero_a, numero_b FROM order_items WHERE order_id = ?
       `).all(order.id);
-      for (const item of items) {
-        stikers.push({
-          codigo: `STK-${order.id.slice(0, 8).toUpperCase()}`,
-          numero1: item.numero_a,
-          numero2: item.numero_b,
-          pagado: true
-        });
-      }
+      // Las órdenes vencidas/rechazadas ya liberaron sus items: la cantidad se deduce del total.
+      const stikers = items.length || Math.round(Number(order.total_cents) / precioCents) || 0;
+      const pagada = order.status === 'paid';
+      compras.push({
+        codigo: `STK-${order.id.slice(0, 8).toUpperCase()}`,
+        estado: ESTADO_COMPRA[order.status] || 'cancelado',
+        fecha: order.created_at,
+        cantidadNumeros: stikers * 2,
+        totalCents: Number(order.total_cents),
+        currency: order.currency,
+        // Los números solo se muestran cuando ya están pagados: una reserva sin pagar no es del cliente.
+        numeros: pagada ? items.map((i) => ({ a: i.numero_a, b: i.numero_b })) : []
+      });
     }
 
-    res.json(toJSONSafe({ stikers }));
+    const conSorteo = orders.find((o) => o.sorteo_nombre);
+    const sorteo = conSorteo
+      ? { nombre: conSorteo.sorteo_nombre, fecha: conSorteo.sorteo_fecha, estado: conSorteo.sorteo_estado }
+      : null;
+    res.json(toJSONSafe({ sorteo, compras }));
   } catch (err) {
     console.error('Error GET /api/verificar-stikers:', err);
     res.status(500).json({ error: err.message });
@@ -845,6 +928,11 @@ async function crearOrdenPendiente(body) {
     `).run(orderId, cedula, nombre, customerEmail, telefono, ciudad || null, amount, currency.toLowerCase(), sorteoMayorId);
   }
 
+  // Autorización para mensajes de WhatsApp: pasa a la ficha del cliente solo si la orden se paga.
+  if (metadata.aceptaWhatsapp === true) {
+    await db.prepare('UPDATE orders SET acepta_whatsapp = TRUE WHERE id = ?').run(orderId);
+  }
+
   return {
     orderId,
     nombre,
@@ -864,6 +952,48 @@ async function liberarOrdenPendiente(orderId) {
     await db.prepare(`UPDATE orders SET status = 'expired' WHERE id = ? AND status = 'pending'`).run(orderId);
   } catch (e) {
     console.warn('No se pudo liberar la orden pendiente', orderId, e?.message);
+  }
+}
+
+/**
+ * Crea o actualiza la ficha del cliente con una orden recién pagada. La ficha no se borra al crear sorteos
+ * nuevos: es la base del CRM. La autorización de WhatsApp, una vez dada, se conserva con su fecha.
+ * Llamar una sola vez por orden (justo al pasar a 'paid'); si falla no debe tumbar la confirmación del pago.
+ */
+async function registrarClienteTrasPago(orderId) {
+  try {
+    const order = await db.prepare(`
+      SELECT id, cedula, nombre, email, telefono, ciudad, total_cents, sorteo_mayor_id, acepta_whatsapp
+      FROM orders WHERE id = ? AND status = 'paid'
+    `).get(orderId);
+    if (!order?.cedula) return;
+    const items = await db.prepare('SELECT COUNT(*) AS n FROM order_items WHERE order_id = ?').get(orderId);
+    const numeros = Number(items?.n || 0) * 2;
+    const acepta = !!order.acepta_whatsapp;
+    await db.prepare(`
+      INSERT INTO clientes (cedula, nombre, email, telefono, ciudad, acepta_whatsapp, acepta_whatsapp_at,
+                            total_compras, total_numeros, total_gastado_cents, ultimo_sorteo_id,
+                            primera_compra_at, ultima_compra_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ?::boolean THEN NOW() END, 1, ?, ?, ?, NOW(), NOW(), NOW())
+      ON CONFLICT (cedula) DO UPDATE SET
+        nombre = EXCLUDED.nombre,
+        email = EXCLUDED.email,
+        telefono = COALESCE(NULLIF(EXCLUDED.telefono, ''), clientes.telefono),
+        ciudad = COALESCE(NULLIF(EXCLUDED.ciudad, ''), clientes.ciudad),
+        acepta_whatsapp = clientes.acepta_whatsapp OR EXCLUDED.acepta_whatsapp,
+        acepta_whatsapp_at = COALESCE(clientes.acepta_whatsapp_at, EXCLUDED.acepta_whatsapp_at),
+        total_compras = clientes.total_compras + 1,
+        total_numeros = clientes.total_numeros + EXCLUDED.total_numeros,
+        total_gastado_cents = clientes.total_gastado_cents + EXCLUDED.total_gastado_cents,
+        ultimo_sorteo_id = COALESCE(EXCLUDED.ultimo_sorteo_id, clientes.ultimo_sorteo_id),
+        ultima_compra_at = NOW(),
+        updated_at = NOW()
+    `).run(
+      order.cedula, order.nombre, order.email, order.telefono || '', order.ciudad || '', acepta, acepta,
+      numeros, Number(order.total_cents), order.sorteo_mayor_id ?? null
+    );
+  } catch (e) {
+    console.warn('No se pudo registrar el cliente de la orden', orderId, e?.message);
   }
 }
 
@@ -1129,7 +1259,11 @@ app.post('/api/simulate-payment', async (req, res) => {
       });
     });
     await runTx();
+    if (metadata.aceptaWhatsapp === true) {
+      await db.prepare('UPDATE orders SET acepta_whatsapp = TRUE WHERE id = ?').run(orderId);
+    }
     await registrarBeneficiosAnticipados(orderId);
+    await registrarClienteTrasPago(orderId);
     enviarComprobanteTrasPago(orderId).catch(e => console.warn('Email comprobante:', e?.message));
 
     res.json({ sessionId: orderId, ok: true });
@@ -1152,6 +1286,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  */
 async function consultarFalloWompi(order) {
   if (order.status === 'expired') return 'El tiempo para pagar se agotó y los números fueron liberados.';
+  if (order.status === 'declined') return 'El banco rechazó el pago o fue cancelado.';
   if (!wompiPrivateKey) return null;
   try {
     const json = await wompiFetch(`/transactions?reference=${encodeURIComponent(order.id)}`, { key: wompiPrivateKey });
@@ -1229,7 +1364,8 @@ app.post('/api/webhooks/wompi', async (req, res) => {
     return res.sendStatus(200);
   }
   const transaction = body.data.transaction;
-  if (transaction.status !== 'APPROVED') {
+  const rechazada = ['DECLINED', 'ERROR', 'VOIDED'].includes(transaction.status);
+  if (transaction.status !== 'APPROVED' && !rechazada) {
     return res.sendStatus(200);
   }
   const reference = transaction.reference;
@@ -1258,6 +1394,12 @@ app.post('/api/webhooks/wompi', async (req, res) => {
   }
 
   try {
+    if (rechazada) {
+      // Solo cambia el estado: los stikers siguen reservados hasta la limpieza por si el cliente reintenta
+      // desde la pantalla de Wompi (misma referencia); si ese reintento se aprueba, llega otro evento APPROVED.
+      await db.prepare(`UPDATE orders SET status = 'declined' WHERE id = ? AND status = 'pending'`).run(reference);
+      return res.sendStatus(200);
+    }
     const order = await db.prepare('SELECT id, status, total_cents FROM orders WHERE id = ?').get(reference);
     if (!order || order.status === 'paid') return res.sendStatus(200);
     const wompiAmount = Math.round(Number(transaction.amount_in_cents));
@@ -1268,6 +1410,7 @@ app.post('/api/webhooks/wompi', async (req, res) => {
     }
     await db.prepare(`UPDATE orders SET status = 'paid', payment_reference = ?, stripe_session_id = ? WHERE id = ?`).run(transaction.id, transaction.id, reference);
     await registrarBeneficiosAnticipados(reference);
+    await registrarClienteTrasPago(reference);
     console.log('Wompi: orden marcada como pagada:', reference);
     enviarComprobanteTrasPago(reference).catch(e => console.warn('Email comprobante:', e?.message));
   } catch (e) {
@@ -1306,9 +1449,18 @@ app.post('/api/admin/orders/:id/confirm-cash', async (req, res) => {
     if (order.status === 'paid') {
       return res.status(400).json({ error: 'La orden ya está marcada como pagada' });
     }
+    // Una orden cancelada/rechazada que ya liberó sus números quedaría pagada sin números (y esos números
+    // pueden estar vendidos a otro cliente).
+    const items = await db.prepare('SELECT COUNT(*) AS n FROM order_items WHERE order_id = ?').get(id);
+    if (Number(items?.n || 0) === 0) {
+      return res.status(400).json({
+        error: 'Esta orden ya liberó sus números (venció o fue rechazada). El cliente debe hacer una compra nueva.'
+      });
+    }
 
     await db.prepare(`UPDATE orders SET status = 'paid' WHERE id = ?`).run(id);
     await registrarBeneficiosAnticipados(id);
+    await registrarClienteTrasPago(id);
     enviarComprobanteTrasPago(id).catch(e => console.warn('Email comprobante:', e?.message));
 
     const updated = await db.prepare(`
@@ -1542,8 +1694,8 @@ app.patch('/api/admin/config', async (req, res) => {
       if (parts.length === 0 || parts.some((n) => isNaN(n) || n <= 0 || n > 100)) {
         return res.status(400).json({ error: 'Cada porcentaje de anticipado debe estar entre 1 y 100.' });
       }
-      const normalized = parts.slice(0, 10);
-      while (normalized.length < 10) normalized.push(100);
+      const normalized = parts.slice(0, NUM_ANTICIPADOS);
+      while (normalized.length < NUM_ANTICIPADOS) normalized.push(100);
       await db.prepare("INSERT INTO config (key, value) VALUES ('anticipados_percent', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(normalized.join(','));
     }
     if (anticipadoStepPercent !== undefined) {
@@ -1651,7 +1803,9 @@ app.get('/api/sorteos/home', async (req, res) => {
     res.json(toJSONSafe({
       principal: principalPublico,
       anticipadosActuales,
-      mayoresRealizados: mayoresRealizados.map(sorteoPublico)
+      mayoresRealizados: mayoresRealizados.map(sorteoPublico),
+      // Mientras no se cree el siguiente sorteo, el inicio destaca al último ganador.
+      ultimoGanador: !principal && mayoresRealizados[0] ? sorteoPublico(mayoresRealizados[0]) : null
     }));
   } catch (err) {
     console.error('Error GET /api/sorteos/home:', err);
@@ -1815,6 +1969,145 @@ app.get('/api/admin/sorteos', async (req, res) => {
   }
 });
 
+const MSG_REALIZAR_ANTES =
+  'Debes realizar el sorteo actual antes de eliminarlo o crear uno nuevo, porque ya tiene números vendidos.';
+const MSG_PAGOS_EN_CURSO =
+  'Hay pagos en curso en el sorteo actual. Espera unos minutos a que se confirmen o venzan e inténtalo de nuevo.';
+
+/**
+ * Qué reemplazaría crear un Premio Mayor nuevo. La tabla orders solo tiene la campaña vigente (la del sorteo
+ * activo o la del último realizado). Se bloquea si el sorteo activo ya vendió números o si hay pagos en curso
+ * (su orden se borraría y un pago aprobado después quedaría sin números).
+ */
+async function resumenReemplazoCampana() {
+  const activo = await db.prepare(`
+    SELECT id, nombre, fecha, hora_sorteo FROM sorteos
+    WHERE tipo = 'mayor' AND estado = 'programado'
+    ORDER BY fecha ASC LIMIT 1
+  `).get();
+  const ventas = await db.prepare(`
+    SELECT COUNT(*) AS compras, COALESCE(SUM(total_cents), 0) AS total FROM orders WHERE status = 'paid'
+  `).get();
+  const items = await db.prepare(`
+    SELECT COUNT(*) AS n FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.status = 'paid'
+  `).get();
+  const enCurso = await db.prepare(`
+    SELECT COUNT(*) AS n FROM orders o
+    WHERE o.status = 'pending'
+       OR (o.status = 'declined' AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id))
+  `).get();
+  const sorteo = await db.prepare(`
+    SELECT s.id, s.nombre, s.fecha, s.estado FROM orders o JOIN sorteos s ON s.id = o.sorteo_mayor_id
+    ORDER BY o.created_at DESC LIMIT 1
+  `).get() || await db.prepare(`
+    SELECT id, nombre, fecha, estado FROM sorteos WHERE tipo = 'mayor' ORDER BY fecha DESC, id DESC LIMIT 1
+  `).get() || null;
+
+  const comprasPagadas = Number(ventas?.compras || 0);
+  const pagosEnCurso = Number(enCurso?.n || 0);
+  let motivoBloqueo = null;
+  if (activo && comprasPagadas > 0) motivoBloqueo = MSG_REALIZAR_ANTES;
+  else if (pagosEnCurso > 0) motivoBloqueo = MSG_PAGOS_EN_CURSO;
+
+  return {
+    activo: activo || null,
+    campana: {
+      sorteo,
+      comprasPagadas,
+      numerosVendidos: Number(items?.n || 0) * 2,
+      totalCents: Number(ventas?.total || 0),
+      pagosEnCurso
+    },
+    bloqueado: !!motivoBloqueo,
+    motivoBloqueo
+  };
+}
+
+/** Copia las ventas pagadas de la campaña vigente a ventas_historial (antes de reiniciarla). */
+async function archivarVentasCampana(tx) {
+  await tx.prepare(`
+    INSERT INTO ventas_historial (order_id, sorteo_id, sorteo_nombre, sorteo_fecha, fecha_compra, cedula, nombre,
+                                  email, telefono, ciudad, numeros, cantidad_numeros, total_cents, currency,
+                                  payment_reference)
+    SELECT o.id, o.sorteo_mayor_id, s.nombre, s.fecha, o.created_at, o.cedula, o.nombre, o.email, o.telefono,
+           o.ciudad,
+           (SELECT STRING_AGG(oi.numero_a || '-' || oi.numero_b, ', ' ORDER BY oi.id) FROM order_items oi WHERE oi.order_id = o.id),
+           (SELECT COUNT(*) * 2 FROM order_items oi WHERE oi.order_id = o.id),
+           o.total_cents, o.currency, o.payment_reference
+    FROM orders o
+    LEFT JOIN sorteos s ON s.id = o.sorteo_mayor_id
+    WHERE o.status = 'paid'
+    ON CONFLICT (order_id) DO NOTHING
+  `).run();
+}
+
+/** Ventas pagadas de un Premio Mayor: las archivadas más las de la campaña vigente que aún no se archivan. */
+async function ventasDeSorteo(sorteoId) {
+  const archivadas = await db.prepare(`
+    SELECT order_id, fecha_compra, cedula, nombre, telefono, email, ciudad, numeros, cantidad_numeros, total_cents
+    FROM ventas_historial WHERE sorteo_id = ?
+  `).all(sorteoId);
+  const vigentes = await db.prepare(`
+    SELECT o.id AS order_id, o.created_at AS fecha_compra, o.cedula, o.nombre, o.telefono, o.email, o.ciudad,
+           (SELECT STRING_AGG(oi.numero_a || '-' || oi.numero_b, ', ' ORDER BY oi.id) FROM order_items oi WHERE oi.order_id = o.id) AS numeros,
+           (SELECT COUNT(*) * 2 FROM order_items oi WHERE oi.order_id = o.id) AS cantidad_numeros,
+           o.total_cents
+    FROM orders o
+    WHERE o.status = 'paid' AND o.sorteo_mayor_id = ?
+  `).all(sorteoId);
+  const vistos = new Set(archivadas.map((v) => v.order_id));
+  return [...archivadas, ...vigentes.filter((v) => !vistos.has(v.order_id))]
+    .sort((a, b) => new Date(a.fecha_compra) - new Date(b.fecha_compra));
+}
+
+/** Celda CSV para Excel en español (separador ';'). */
+function celdaCsv(valor) {
+  const s = valor === null || valor === undefined ? '' : String(valor);
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+app.get('/api/admin/sorteos/resumen-reemplazo', async (req, res) => {
+  try {
+    res.json(toJSONSafe(await resumenReemplazoCampana()));
+  } catch (err) {
+    console.error('Error GET /api/admin/sorteos/resumen-reemplazo:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Informe de ventas pagadas de un Premio Mayor, en CSV que abre directo en Excel. */
+app.get('/api/admin/informe-ventas', async (req, res) => {
+  try {
+    const sorteoId = parseInt(req.query.sorteoId, 10);
+    if (!Number.isFinite(sorteoId)) return res.status(400).json({ error: 'Indica el sorteo (sorteoId).' });
+    const sorteo = await db.prepare('SELECT id, nombre, fecha FROM sorteos WHERE id = ?').get(sorteoId);
+    const ventas = await ventasDeSorteo(sorteoId);
+
+    const encabezado = ['Fecha de compra', 'Código', 'Cédula', 'Nombre', 'Teléfono', 'Email', 'Ciudad',
+      'Cantidad de números', 'Números', 'Total (COP)'];
+    const filas = ventas.map((v) => [
+      new Date(v.fecha_compra).toLocaleString('es-CO', { timeZone: 'America/Bogota' }),
+      `STK-${String(v.order_id).slice(0, 8).toUpperCase()}`,
+      v.cedula, v.nombre, v.telefono, v.email, v.ciudad,
+      Number(v.cantidad_numeros || 0), v.numeros || '',
+      Math.round(Number(v.total_cents || 0) / 100)
+    ]);
+    const totalCents = ventas.reduce((acc, v) => acc + Number(v.total_cents || 0), 0);
+    const totalNumeros = ventas.reduce((acc, v) => acc + Number(v.cantidad_numeros || 0), 0);
+    filas.push([]);
+    filas.push(['TOTAL', `${ventas.length} compras`, '', '', '', '', '', totalNumeros, '', Math.round(totalCents / 100)]);
+
+    const csv = '﻿' + [encabezado, ...filas].map((f) => f.map(celdaCsv).join(';')).join('\r\n');
+    const nombre = (sorteo?.nombre || `sorteo-${sorteoId}`).normalize('NFD').replace(/[^\w-]+/g, '-').replace(/-+/g, '-');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ventas-${nombre}-${sorteo?.fecha || ''}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('Error GET /api/admin/informe-ventas:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/sorteos', async (req, res) => {
   try {
     const { nombre, fecha, descripcion, tipo = 'anticipado', premio_descripcion, imagen_url, numeros_beneficiados, hora_sorteo } = req.body;
@@ -1828,16 +2121,27 @@ app.post('/api/admin/sorteos', async (req, res) => {
       return res.status(400).json({ error: 'Para Premio Mayor es obligatoria la hora del sorteo (HH:MM, hora de Colombia): las ventas se cierran automáticamente 1 hora antes.' });
     }
 
-    if ((tipo || '').toLowerCase() === 'mayor') {
-      const paidCount = await db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'paid'").get();
-      if (Number(paidCount?.n || 0) > 0) {
-        return res.status(400).json({
-          error: 'Hay ventas pagadas en la campaña actual. Realiza el Premio Mayor antes de crear uno nuevo; crear otro borraría todas las ventas.'
-        });
+    const esMayor = (tipo || '').toLowerCase() === 'mayor';
+    if (esMayor) {
+      const resumen = await resumenReemplazoCampana();
+      if (resumen.bloqueado) {
+        return res.status(400).json({ code: 'reemplazo_bloqueado', error: resumen.motivoBloqueo, resumen });
+      }
+      // El panel de resumen del admin muestra qué se reemplaza; sin esta confirmación no se borra nada.
+      if (req.body.confirmarReemplazo !== true) {
+        return res.status(409).json({ code: 'confirmar_reemplazo', error: 'Confirma el reemplazo de la campaña anterior.', resumen });
       }
     }
 
     const runTx = db.transaction(async (tx) => {
+      if (esMayor) {
+        await archivarVentasCampana(tx);
+        // Un Premio Mayor activo sin ventas pagadas se reemplaza (junto con sus anticipados).
+        await tx.exec(`
+          DELETE FROM sorteos WHERE sorteo_mayor_id IN (SELECT id FROM sorteos WHERE tipo = 'mayor' AND estado = 'programado');
+          DELETE FROM sorteos WHERE tipo = 'mayor' AND estado = 'programado'
+        `);
+      }
       const result = await tx.prepare(`
         INSERT INTO sorteos (nombre, fecha, hora_sorteo, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numeros_beneficiados)
         VALUES (?, ?, ?, ?, ?, 'programado', ?, ?, NULL, ?)
@@ -1872,7 +2176,7 @@ app.post('/api/admin/sorteos', async (req, res) => {
           VALUES (?, ?, ?, 'anticipado', 'programado', ?, ?, ?)
         `);
         const seen = new Set();
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= NUM_ANTICIPADOS; i++) {
           let num = randomNumero4();
           while (seen.has(num)) num = randomNumero4();
           seen.add(num);
@@ -1938,9 +2242,18 @@ app.delete('/api/admin/sorteos/:id', async (req, res) => {
     }
 
     if ((current.tipo || '').toLowerCase() === 'mayor') {
-      const ordenes = await db.prepare('SELECT COUNT(*) AS n FROM orders WHERE sorteo_mayor_id = ?').get(id);
-      if (Number(ordenes?.n || 0) > 0) {
-        return res.status(400).json({ error: 'No se puede eliminar un Premio Mayor que ya tiene ventas asociadas.' });
+      const pagadas = await db.prepare("SELECT COUNT(*) AS n FROM orders WHERE sorteo_mayor_id = ? AND status = 'paid'").get(id);
+      if (Number(pagadas?.n || 0) > 0) {
+        return res.status(400).json({ error: MSG_REALIZAR_ANTES });
+      }
+      const enCurso = await db.prepare(`
+        SELECT COUNT(*) AS n FROM orders o
+        WHERE o.sorteo_mayor_id = ?
+          AND (o.status = 'pending'
+            OR (o.status = 'declined' AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id)))
+      `).get(id);
+      if (Number(enCurso?.n || 0) > 0) {
+        return res.status(400).json({ error: MSG_PAGOS_EN_CURSO });
       }
 
       // Borrar anticipados de la campaña y luego el premio mayor
@@ -2118,14 +2431,10 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
     );
 
     if (sorteo.tipo === 'mayor') {
+      // Las ventas se conservan: los clientes siguen viendo sus números y el ganador hasta que se cree el
+      // siguiente Premio Mayor, que es cuando se archivan y se reinicia la campaña.
       await db.prepare(`UPDATE sorteos SET estado = 'realizado' WHERE sorteo_mayor_id = ?`).run(id);
-      await db.exec('DELETE FROM beneficios_anticipados;');
-      await db.exec('DELETE FROM order_items;');
-      // Primero liberar los stiker_slots para no violar la FK stiker_slots.order_id -> orders.id
-      await db.exec('DELETE FROM stiker_slots;');
-      await db.exec('DELETE FROM orders;');
-      await fillStikerSlots5000();
-      console.log('Nueva campaña: ventas, stikers y anticipados reiniciados después del Premio Mayor.');
+      console.log('Premio Mayor realizado; ventas conservadas hasta que se cree el siguiente sorteo.');
     }
 
     const updated = await db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);

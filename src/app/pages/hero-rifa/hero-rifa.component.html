@@ -15,12 +15,12 @@
 
   <div *ngIf="!cargandoHero" class="hero-content">
 
-    <!-- Imagen Premio Mayor (spinner mientras carga la foto) -->
-    <div *ngIf="principal" class="hero-image-wrap">
+    <!-- Imagen Premio Mayor o, sin sorteo activo, foto del último ganador (spinner mientras carga) -->
+    <div *ngIf="principal || ultimoGanador" class="hero-image-wrap">
       <img
         *ngIf="!heroImgFailed"
         [src]="heroImageUrl"
-        alt="Premio Mayor"
+        [alt]="principal ? 'Premio Mayor' : ('Ganador: ' + (ultimoGanador?.ganador_nombre || ultimoGanador?.nombre))"
         class="hero-image"
         [class.hero-image--visible]="heroImgLoaded"
         (load)="onHeroImgLoad()"
@@ -41,13 +41,28 @@
       <h1 *ngIf="principal">
         {{ principal.nombre }}
       </h1>
-      <h1 *ngIf="!principal" class="hero-proximamente">
+      <!-- Sin sorteo activo: el último ganador destacado hasta que se cree el siguiente sorteo -->
+      <div *ngIf="!principal && ultimoGanador" class="hero-ganador">
+        <span class="hero-ganador-badge">🏆 ¡Tenemos ganador!</span>
+        <h1>{{ ultimoGanador.nombre }}</h1>
+        <p *ngIf="ultimoGanador.premio_descripcion" class="hero-ganador-premio">{{ ultimoGanador.premio_descripcion }}</p>
+        <div *ngIf="ultimoGanador.numero_ganador_a" class="hero-ganador-numero">
+          <small>Números ganadores</small>
+          <strong>{{ ultimoGanador.numero_ganador_a }} – {{ ultimoGanador.numero_ganador_b }}</strong>
+        </div>
+        <p *ngIf="ultimoGanador.ganador_nombre" class="hero-ganador-nombre">
+          Ganador: <strong>{{ ultimoGanador.ganador_nombre }}</strong>
+        </p>
+        <p class="hero-ganador-proximo">Próximamente más sorteos. ¡Prepárate para participar!</p>
+      </div>
+
+      <h1 *ngIf="!principal && !ultimoGanador" class="hero-proximamente">
         Próximamente tendremos más sorteos
       </h1>
       <p *ngIf="principal">
         {{ principal.premio_descripcion || 'Participa por increíbles premios comprando tus stikers' }}
       </p>
-      <p *ngIf="!principal">
+      <p *ngIf="!principal && !ultimoGanador">
         Vuelve pronto para participar en el próximo sorteo.
       </p>
 

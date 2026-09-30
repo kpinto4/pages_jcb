@@ -89,7 +89,9 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
     cedula: '',
     telefono: '',
     email: '',
-    ciudad: ''
+    ciudad: '',
+    /** Autorización (opcional, desmarcada por defecto) para recibir sorteos y recordatorios por WhatsApp. */
+    aceptaWhatsapp: false
   };
 
   /** Datos mostrados en la pantalla de éxito (vuelta desde Wompi o simulación) */
@@ -569,7 +571,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         cedula: this.cliente.cedula.trim() || '',
         telefono: this.cliente.telefono.trim() || '',
         ciudad: this.cliente.ciudad.trim() || '',
-        stikersDetail: stikersDetail.slice(0, 500)
+        stikersDetail: stikersDetail.slice(0, 500),
+        aceptaWhatsapp: this.cliente.aceptaWhatsapp
       },
       selectedStikers
     };
@@ -645,7 +648,8 @@ export class ComprarStikersComponent implements OnInit, OnDestroy {
         cedula: this.cliente.cedula.trim() || '',
         telefono: this.cliente.telefono.trim() || '',
         ciudad: this.cliente.ciudad.trim() || '',
-        stikersDetail: stikersDetail.slice(0, 500)
+        stikersDetail: stikersDetail.slice(0, 500),
+        aceptaWhatsapp: this.cliente.aceptaWhatsapp
       },
       selectedStikers
     }).pipe(takeUntil(this.destroy$)).subscribe({

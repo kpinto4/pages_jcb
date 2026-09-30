@@ -324,12 +324,12 @@
                     <td>{{ formatCents(o.total_cents) }}</td>
                     <td>
                       <span class="badge" [class.paid]="o.status === 'paid'">
-                        {{ o.status === 'paid' ? 'Pagado' : 'Pendiente' }}
+                        {{ etiquetaEstadoOrden(o.status) }}
                       </span>
                     </td>
                     <td>
                       <button
-                        *ngIf="o.status !== 'paid'"
+                        *ngIf="puedeConfirmarEfectivo(o)"
                         type="button"
                         class="btn-realizar"
                         [disabled]="confirmandoId === o.id"
@@ -352,7 +352,7 @@
             <header class="card-head">
               <div>
                 <h2>Crear Premio Mayor</h2>
-                <p class="muted">Crea el premio mayor y 10 anticipados (editables después).</p>
+                <p class="muted">Crea el premio mayor y 6 anticipados (editables después). Antes de crearlo verás un resumen de lo que se reemplaza.</p>
               </div>
             </header>
             <div class="sorteo-form">
@@ -381,8 +381,78 @@
               <div class="form-row">
                 <input type="text" placeholder="Descripción (opcional)" [(ngModel)]="nuevoSorteo.descripcion">
               </div>
-              <button type="button" class="btn-primary" [disabled]="guardandoSorteo" (click)="crearSorteo()">
-                {{ guardandoSorteo ? 'Guardando...' : 'Crear sorteo' }}
+              <button type="button" class="btn-primary" [disabled]="guardandoSorteo || cargandoResumen" (click)="crearSorteo()">
+                {{ cargandoResumen ? 'Revisando...' : 'Crear sorteo' }}
+              </button>
+            </div>
+          </article>
+
+          <!-- Resumen antes de crear el Premio Mayor: qué se crea y qué se reemplaza -->
+          <article id="panel-reemplazo" *ngIf="resumenReemplazo" class="admin-card admin-card--focus">
+            <header class="card-head">
+              <div>
+                <h2>Resumen del sorteo a crear</h2>
+                <p class="muted">Revisa los datos antes de confirmar.</p>
+              </div>
+            </header>
+
+            <div class="reemplazo-bloque">
+              <h3>Sorteo nuevo</h3>
+              <p><strong>{{ nuevoSorteo.nombre }}</strong></p>
+              <p>{{ formatDate(nuevoSorteo.fecha) }} · {{ nuevoSorteo.hora_sorteo }} (hora Colombia) · las ventas cierran 1 hora antes</p>
+              <p *ngIf="nuevoSorteo.premio_descripcion">Premio: {{ nuevoSorteo.premio_descripcion }}</p>
+              <p class="muted small">Imagen: {{ imagenFile?.name || nuevoSorteo.imagen_url }}</p>
+              <p class="muted small">Se crean 6 premios anticipados con números bendecidos al azar.</p>
+            </div>
+
+            <div class="reemplazo-bloque reemplazo-bloqueado" *ngIf="resumenReemplazo.bloqueado">
+              <h3>No se puede crear todavía</h3>
+              <p>{{ resumenReemplazo.motivoBloqueo }}</p>
+              <p class="muted small" *ngIf="resumenReemplazo.activo">
+                Sorteo activo: {{ resumenReemplazo.activo.nombre }} ({{ formatDate(resumenReemplazo.activo.fecha) }})
+              </p>
+            </div>
+
+            <div class="reemplazo-bloque" *ngIf="!resumenReemplazo.bloqueado">
+              <h3>Se reemplaza</h3>
+              <p *ngIf="resumenReemplazo.activo">
+                El sorteo activo <strong>{{ resumenReemplazo.activo.nombre }}</strong> (sin ventas) se elimina junto con sus anticipados.
+              </p>
+              <ng-container *ngIf="resumenReemplazo.campana.comprasPagadas > 0; else sinVentasReemplazo">
+                <p>
+                  Ventas de <strong>{{ resumenReemplazo.campana.sorteo?.nombre || 'la campaña anterior' }}</strong>:
+                  {{ resumenReemplazo.campana.comprasPagadas }} compras pagadas ·
+                  {{ resumenReemplazo.campana.numerosVendidos }} números ·
+                  {{ formatCents(resumenReemplazo.campana.totalCents) }}
+                </p>
+                <p class="muted small">
+                  Se guardan en el historial (el informe se puede descargar cuando quieras) y la grilla de números se reinicia para el sorteo nuevo.
+                </p>
+                <button
+                  *ngIf="resumenReemplazo.campana.sorteo as sorteoAnterior"
+                  type="button"
+                  class="btn-secondary"
+                  [disabled]="descargandoInformeId === sorteoAnterior.id"
+                  (click)="descargarInforme(sorteoAnterior.id, sorteoAnterior.nombre)"
+                >
+                  {{ descargandoInformeId === sorteoAnterior.id ? 'Descargando...' : 'Descargar informe de ventas (Excel)' }}
+                </button>
+              </ng-container>
+              <ng-template #sinVentasReemplazo>
+                <p class="muted">No hay ventas pagadas que reemplazar.</p>
+              </ng-template>
+            </div>
+
+            <div class="edit-actions">
+              <button type="button" class="btn-secondary" [disabled]="guardandoSorteo" (click)="cancelarReemplazo()">Cancelar</button>
+              <button
+                *ngIf="!resumenReemplazo.bloqueado"
+                type="button"
+                class="btn-primary"
+                [disabled]="guardandoSorteo"
+                (click)="confirmarReemplazo()"
+              >
+                {{ guardandoSorteo ? 'Creando...' : 'Confirmar y crear sorteo' }}
               </button>
             </div>
           </article>
@@ -457,6 +527,15 @@
                   >
                     Realizar sorteo
                   </button>
+                  <button
+                    *ngIf="(s.tipo || '').toLowerCase() === 'mayor' && editSorteoId !== s.id"
+                    type="button"
+                    class="btn-secondary"
+                    [disabled]="descargandoInformeId === s.id"
+                    (click)="descargarInforme(s.id, s.nombre); $event.stopPropagation()"
+                  >
+                    {{ descargandoInformeId === s.id ? 'Descargando...' : 'Informe de ventas' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -517,6 +596,15 @@
                     (click)="editarSorteo(grupo.mayor)"
                   >
                     Cambiar foto del ganador
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    *ngIf="editSorteoId !== grupo.mayor.id"
+                    [disabled]="descargandoInformeId === grupo.mayor.id"
+                    (click)="descargarInforme(grupo.mayor.id, grupo.mayor.nombre)"
+                  >
+                    {{ descargandoInformeId === grupo.mayor.id ? 'Descargando...' : 'Informe de ventas' }}
                   </button>
                 </div>
               </div>

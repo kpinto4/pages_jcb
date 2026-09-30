@@ -1,7 +1,7 @@
 <section class="verify">
   <h1>Verifica tu stiker</h1>
   <p>
-    Ingresa tu número de cédula para consultar los stikers asociados a tu compra.
+    Ingresa tu número de cédula para consultar tus compras del sorteo actual.
   </p>
 
   <form (submit)="buscarStikers($event)">
@@ -14,32 +14,48 @@
     >
 
     <button type="submit" [disabled]="buscando">
-      {{ buscando ? 'Buscando...' : 'Buscar stikers' }}
+      {{ buscando ? 'Buscando...' : 'Consultar' }}
     </button>
   </form>
 
   <app-loading-indicator
     *ngIf="buscando"
     class="verify-loading"
-    message="Consultando tus stikers..."
+    message="Consultando tus compras..."
     layout="block"
     size="md"
   />
 
   <p class="error-msg" *ngIf="error">{{ error }}</p>
 
-  <!-- Resultado -->
-  <div class="resultado" *ngIf="stikers.length > 0">
-    <h2>Stikers encontrados</h2>
-
-    <div class="stiker" *ngFor="let b of stikers">
-      <p><strong>Stiker:</strong> {{ b.codigo }}</p>
-      <p><strong>Números:</strong> {{ b.numero1 }} - {{ b.numero2 }}</p>
-      <p><strong>Estado:</strong>
-        <span [class.pagado]="b.pagado">
-          {{ b.pagado ? 'Pagado' : 'Pendiente' }}
-        </span>
+  <!-- Resultado: una tarjeta por compra -->
+  <div class="resultado" *ngIf="!buscando && compras.length > 0">
+    <div class="resumen">
+      <p class="resumen-sorteo" *ngIf="sorteo">
+        {{ sorteo.nombre }}
+        <span *ngIf="sorteo.estado === 'realizado'" class="resumen-realizado">· Sorteo realizado</span>
       </p>
+      <p class="resumen-total">
+        <strong>{{ numerosPagados }}</strong> {{ numerosPagados === 1 ? 'número pagado' : 'números pagados' }}
+      </p>
+    </div>
+
+    <div class="compra" *ngFor="let c of compras" [ngClass]="'compra--' + c.estado">
+      <div class="compra-cabecera">
+        <span class="compra-codigo">Compra {{ c.codigo }}</span>
+        <span class="estado" [ngClass]="'estado--' + c.estado">{{ etiquetaEstado[c.estado] }}</span>
+      </div>
+      <p class="compra-detalle">
+        {{ c.cantidadNumeros }} números · {{ formatearTotal(c) }} · {{ formatearFecha(c.fecha) }}
+      </p>
+
+      <ul class="numeros" *ngIf="c.estado === 'pagado' && c.numeros.length > 0">
+        <li *ngFor="let n of c.numeros">
+          <span class="pair">{{ n.a }}</span><span class="sep" aria-hidden="true">–</span><span class="pair">{{ n.b }}</span>
+        </li>
+      </ul>
+
+      <p class="compra-nota" *ngIf="notaEstado[c.estado]">{{ notaEstado[c.estado] }}</p>
     </div>
   </div>
 </section>

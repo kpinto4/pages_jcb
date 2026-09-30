@@ -1214,3 +1214,32 @@
     grid-template-columns: 1fr;
   }
 }
+
+.reemplazo-bloque {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+  }
+
+  p {
+    margin: 0.25rem 0;
+  }
+
+  button {
+    margin-top: 0.75rem;
+  }
+}
+
+.reemplazo-bloqueado {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+
+  h3 {
+    color: #ef4444;
+  }
+}

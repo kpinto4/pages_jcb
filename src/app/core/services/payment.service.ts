@@ -15,7 +15,7 @@ export interface CreateCheckoutSessionRequest {
     quantity: number;
     image?: string;
   }>;
-  metadata?: Record<string, string>;
+  metadata?: Record<string, string | boolean>;
   /** Stikers seleccionados (numeroA, numeroB) para reservar en backend */
   selectedStikers?: Array<{ numeroA: string; numeroB: string }>;
 }
@@ -26,11 +26,20 @@ export interface StikerFromApi {
   estado: 'libre' | 'ocupado' | 'reservado';
 }
 
-export interface StikerCompradoFromApi {
+/** Una compra del cliente en "Verifica tu stiker". Los números solo vienen cuando está pagada. */
+export interface CompraVerificada {
   codigo: string;
-  numero1: string;
-  numero2: string;
-  pagado: boolean;
+  estado: 'pagado' | 'pendiente' | 'cancelado' | 'rechazado';
+  fecha: string;
+  cantidadNumeros: number;
+  totalCents: number;
+  currency: string;
+  numeros: Array<{ a: string; b: string }>;
+}
+
+export interface VerificacionCedula {
+  sorteo: { nombre: string; fecha: string; estado: string } | null;
+  compras: CompraVerificada[];
 }
 
 export interface CreateCheckoutSessionResponse {
@@ -128,7 +137,7 @@ export class PaymentService {
     currency?: string;
     customerEmail: string;
     customerName?: string;
-    metadata?: Record<string, string>;
+    metadata?: Record<string, string | boolean>;
     selectedStikers: Array<{ numeroA: string; numeroB: string }>;
   }): Observable<{ sessionId: string; ok: boolean }> {
     return this.http.post<{ sessionId: string; ok: boolean }>(apiEndpoint('/api/simulate-payment'), request).pipe(
@@ -188,10 +197,10 @@ export class PaymentService {
   }
 
   /**
-   * Stikers pagados asociados a una cédula (para Verificar stiker).
+   * Compras de una cédula en la campaña vigente (para Verificar stiker). Las pendientes vienen primero.
    */
-  getStikersPorCedula(cedula: string): Observable<{ stikers: StikerCompradoFromApi[] }> {
-    return this.http.get<{ stikers: StikerCompradoFromApi[] }>(apiEndpoint('/api/verificar-stikers'), {
+  getComprasPorCedula(cedula: string): Observable<VerificacionCedula> {
+    return this.http.get<VerificacionCedula>(apiEndpoint('/api/verificar-stikers'), {
       params: { cedula: cedula.trim() }
     });
   }
