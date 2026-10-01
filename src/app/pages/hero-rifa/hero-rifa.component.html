@@ -47,8 +47,8 @@
         <h1>{{ ultimoGanador.nombre }}</h1>
         <p *ngIf="ultimoGanador.premio_descripcion" class="hero-ganador-premio">{{ ultimoGanador.premio_descripcion }}</p>
         <div *ngIf="ultimoGanador.numero_ganador_a" class="hero-ganador-numero">
-          <small>Números ganadores</small>
-          <strong>{{ ultimoGanador.numero_ganador_a }} – {{ ultimoGanador.numero_ganador_b }}</strong>
+          <small>Número ganador</small>
+          <strong>{{ ultimoGanador.numero_loteria || (ultimoGanador.numero_ganador_a + ' – ' + ultimoGanador.numero_ganador_b) }}</strong>
         </div>
         <p *ngIf="ultimoGanador.ganador_nombre" class="hero-ganador-nombre">
           Ganador: <strong>{{ ultimoGanador.ganador_nombre }}</strong>

@@ -15,6 +15,8 @@ export interface Sorteo {
   imagen_url?: string | null;
   numero_ganador_a?: string | null;
   numero_ganador_b?: string | null;
+  /** Número de 4 cifras que jugó en la lotería (los anteriores a este campo no lo tienen). */
+  numero_loteria?: string | null;
   numeros_beneficiados?: string | null;
   /** Solo en `principal` (respuesta de /api/sorteos/home): instante ISO en que cierran las ventas. */
   horaCierreVentas?: string | null;

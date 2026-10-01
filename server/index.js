@@ -93,6 +93,8 @@ if (db && process.env.DATABASE_URL) {
 }
 // Columnas y tablas que no siempre existen en la BD: se crean al arrancar para no depender de migraciones manuales.
 // - orders.payment_reference: la usa el webhook de Wompi; sin ella el UPDATE a 'paid' fallaba.
+// - sorteos.numero_loteria: el número de 4 cifras que jugó en la lotería (numero_ganador_a/b es la pareja
+//   del stiker que lo contiene).
 // - clientes: datos de contacto que sobreviven a cada sorteo (base para el CRM de WhatsApp).
 // - ventas_historial: copia de las ventas pagadas de un sorteo antes de reemplazarlo por uno nuevo.
 if (db) {
@@ -100,6 +102,7 @@ if (db) {
     await db.exec(`
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS acepta_whatsapp BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE sorteos ADD COLUMN IF NOT EXISTS numero_loteria TEXT;
       CREATE TABLE IF NOT EXISTS clientes (
         id SERIAL PRIMARY KEY,
         cedula TEXT NOT NULL UNIQUE,
@@ -1752,7 +1755,7 @@ app.patch('/api/admin/config', async (req, res) => {
 
 // ----- SORTEOS (público y admin) -----
 
-const sorteosSelect = 'id, nombre, fecha, hora_sorteo, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numero_ganador_a, numero_ganador_b, numeros_beneficiados, created_at';
+const sorteosSelect = 'id, nombre, fecha, hora_sorteo, descripcion, tipo, estado, premio_descripcion, imagen_url, sorteo_mayor_id, numero_ganador_a, numero_ganador_b, numero_loteria, numeros_beneficiados, created_at';
 
 app.get('/api/sorteos', async (req, res) => {
   try {
@@ -2450,6 +2453,7 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
       SET estado = 'realizado',
           numero_ganador_a = ?,
           numero_ganador_b = ?,
+          numero_loteria = ?,
           ganador_nombre = ?,
           ganador_cedula = ?,
           ganador_email = ?,
@@ -2458,6 +2462,7 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
     `).run(
       na,
       nb,
+      pad4(numero_ganador),
       ganador.nombre,
       ganador.cedula,
       ganador.email,

@@ -42,7 +42,7 @@
         <span class="estado-badge realizado">Realizado</span>
         <div class="ganador-info" *ngIf="s.numero_ganador_a">
           <p class="ganador-numero">
-            <strong>Stiker ganador:</strong> {{ s.numero_ganador_a }} — {{ s.numero_ganador_b }}
+            <strong>Número ganador:</strong> {{ s.numero_loteria || (s.numero_ganador_a + ' — ' + s.numero_ganador_b) }}
           </p>
           <p class="ganador-nombre" *ngIf="s.ganador_nombre">
             <strong>Ganador:</strong> {{ s.ganador_nombre }}
