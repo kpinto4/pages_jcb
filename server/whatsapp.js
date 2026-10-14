@@ -11,30 +11,31 @@
  * solo vale dentro de las 24 h siguientes a un mensaje del cliente.
  */
 
-const token = (process.env.WHATSAPP_TOKEN || '').trim();
-const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
-const wabaId = (process.env.WHATSAPP_WABA_ID || '').trim();
-const apiVersion = (process.env.WHATSAPP_API_VERSION || 'v23.0').trim();
-const graphUrl = `https://graph.facebook.com/${apiVersion}`;
+// Se leen al usarse, no al cargar el módulo: index.js importa este archivo antes de ejecutar
+// dotenv.config(), así que a esa altura process.env aún no tiene las variables de server/.env.
+const env = (name, fallback = '') => (process.env[name] || fallback).trim();
+const token = () => env('WHATSAPP_TOKEN');
+const phoneNumberId = () => env('WHATSAPP_PHONE_NUMBER_ID');
+const wabaId = () => env('WHATSAPP_WABA_ID');
 
 export function whatsappConfigurado() {
-  return !!(token && phoneNumberId && wabaId);
+  return !!(token() && phoneNumberId() && wabaId());
 }
 
 /** Qué variables faltan, para mostrarlo en el panel en vez de un error genérico. */
 export function variablesFaltantes() {
   const faltan = [];
-  if (!token) faltan.push('WHATSAPP_TOKEN');
-  if (!phoneNumberId) faltan.push('WHATSAPP_PHONE_NUMBER_ID');
-  if (!wabaId) faltan.push('WHATSAPP_WABA_ID');
+  if (!token()) faltan.push('WHATSAPP_TOKEN');
+  if (!phoneNumberId()) faltan.push('WHATSAPP_PHONE_NUMBER_ID');
+  if (!wabaId()) faltan.push('WHATSAPP_WABA_ID');
   return faltan;
 }
 
 async function graph(pathAndQuery, { method = 'GET', body } = {}) {
-  const res = await fetch(`${graphUrl}/${pathAndQuery}`, {
+  const res = await fetch(`https://graph.facebook.com/${env('WHATSAPP_API_VERSION', 'v23.0')}/${pathAndQuery}`, {
     method,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token()}`,
       ...(body ? { 'Content-Type': 'application/json' } : {})
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -69,7 +70,7 @@ function explicarError(e) {
 
 /** Datos del número que envía: nombre verificado, estado de conexión, calidad y límite diario. */
 export async function estadoNumero() {
-  return graph(`${phoneNumberId}?fields=display_phone_number,verified_name,status,quality_rating,messaging_limit_tier`);
+  return graph(`${phoneNumberId()}?fields=display_phone_number,verified_name,status,quality_rating,messaging_limit_tier`);
 }
 
 /** Nombres de las variables del cuerpo de la plantilla: ['1','2'] (posicionales) o ['nombre', ...] (con nombre). */
@@ -83,7 +84,7 @@ function variablesDelCuerpo(texto) {
 
 /** Plantillas aprobadas de la cuenta, con el texto y las variables que pide el cuerpo. */
 export async function plantillasAprobadas() {
-  const data = await graph(`${wabaId}/message_templates?fields=name,language,status,category,parameter_format,components&limit=100`);
+  const data = await graph(`${wabaId()}/message_templates?fields=name,language,status,category,parameter_format,components&limit=100`);
   return (data.data || [])
     .filter((t) => t.status === 'APPROVED')
     .map((t) => {
@@ -120,7 +121,7 @@ export async function enviarPlantilla(telefono, plantilla, valores) {
     text: String(valores[i] ?? '').trim() || '-',
     ...(plantilla.formato === 'NAMED' ? { parameter_name: nombre } : {})
   }));
-  const data = await graph(`${phoneNumberId}/messages`, {
+  const data = await graph(`${phoneNumberId()}/messages`, {
     method: 'POST',
     body: {
       messaging_product: 'whatsapp',
