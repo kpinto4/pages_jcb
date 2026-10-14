@@ -150,7 +150,7 @@ export interface WhatsappEstado {
   } | null;
   plantillas: WhatsappPlantilla[];
   error: string | null;
-  destinatarios: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number };
+  destinatarios: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number; internos: number };
   campanaEnCurso: number | string | null;
 }
 

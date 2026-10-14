@@ -781,6 +781,9 @@
                       {{ e.destinatarios.sinAutorizacion }} no autorizaron WhatsApp
                       y {{ e.destinatarios.telefonoInvalido }} tienen un celular inválido.
                     </p>
+                    <p *ngIf="e.destinatarios.internos > 0">
+                      Incluye {{ e.destinatarios.internos }} número(s) de prueba (WHATSAPP_NUMEROS_PRUEBA).
+                    </p>
                   </div>
                 </div>
                 <div class="diagnostico-item" *ngIf="e.numero" [class.is-ok]="e.numero.quality_rating !== 'RED'" [class.is-fail]="e.numero.quality_rating === 'RED'">

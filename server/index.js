@@ -2540,7 +2540,16 @@ async function destinatariosWhatsapp() {
     vistos.add(telefono);
     lista.push({ cedula: r.cedula, nombre: r.nombre || '', ciudad: r.ciudad || '', telefono });
   }
-  return { lista, sinAutorizacion, telefonoInvalido, totalClientes: rows.length };
+  // Números internos (separados por coma) que reciben toda campaña: para probar o ver lo que llega a los clientes.
+  const internos = [];
+  for (const raw of (process.env.WHATSAPP_NUMEROS_PRUEBA || '').split(/[,;\s]+/)) {
+    const telefono = whatsapp.normalizarTelefono(raw);
+    if (!telefono || vistos.has(telefono)) continue;
+    vistos.add(telefono);
+    internos.push(telefono);
+    lista.push({ cedula: null, nombre: 'Prueba', ciudad: '', telefono });
+  }
+  return { lista, sinAutorizacion, telefonoInvalido, totalClientes: rows.length, internos };
 }
 
 /** Reemplaza {nombre}, {nombre_completo} y {ciudad} en los valores que escribió el admin. */
@@ -2610,14 +2619,14 @@ async function ejecutarCampanaWhatsapp(campanaId, plantilla, valores, lista) {
 
 app.get('/api/admin/whatsapp/estado', async (req, res) => {
   try {
-    const { lista, sinAutorizacion, telefonoInvalido, totalClientes } = await destinatariosWhatsapp();
+    const { lista, sinAutorizacion, telefonoInvalido, totalClientes, internos } = await destinatariosWhatsapp();
     const out = {
       configurado: whatsapp.whatsappConfigurado(),
       faltan: whatsapp.variablesFaltantes(),
       numero: null,
       plantillas: [],
       error: null,
-      destinatarios: { total: lista.length, sinAutorizacion, telefonoInvalido, totalClientes },
+      destinatarios: { total: lista.length, sinAutorizacion, telefonoInvalido, totalClientes, internos: internos.length },
       campanaEnCurso: campanaWhatsappEnCurso
     };
     if (out.configurado) {
