@@ -12,6 +12,7 @@ import multer from 'multer';
 import fs from 'fs';
 import { initDb } from './db-adapter.js';
 import { randomUUID, createHash, timingSafeEqual } from 'crypto';
+import * as whatsapp from './whatsapp.js';
 
 let enviarComprobanteTrasPago = async () => {};
 let verificarSmtp = async () => ({ configured: false, ok: false, error: 'Módulo de correo no cargado' });
@@ -97,6 +98,7 @@ if (db && process.env.DATABASE_URL) {
 //   del stiker que lo contiene).
 // - clientes: datos de contacto que sobreviven a cada sorteo (base para el CRM de WhatsApp).
 // - ventas_historial: copia de las ventas pagadas de un sorteo antes de reemplazarlo por uno nuevo.
+// - whatsapp_campanas / whatsapp_envios: cada envío masivo del CRM y el resultado por cliente.
 if (db) {
   try {
     await db.exec(`
@@ -139,10 +141,39 @@ if (db) {
         payment_reference TEXT,
         archivado_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_ventas_historial_sorteo ON ventas_historial(sorteo_id)
+      CREATE INDEX IF NOT EXISTS idx_ventas_historial_sorteo ON ventas_historial(sorteo_id);
+      CREATE TABLE IF NOT EXISTS whatsapp_campanas (
+        id SERIAL PRIMARY KEY,
+        plantilla TEXT NOT NULL,
+        idioma TEXT NOT NULL,
+        valores TEXT,
+        total INTEGER NOT NULL DEFAULT 0,
+        enviados INTEGER NOT NULL DEFAULT 0,
+        fallidos INTEGER NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'enviando',
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        terminada_at TIMESTAMPTZ
+      );
+      CREATE TABLE IF NOT EXISTS whatsapp_envios (
+        id SERIAL PRIMARY KEY,
+        campana_id INTEGER NOT NULL,
+        cedula TEXT,
+        nombre TEXT,
+        telefono TEXT NOT NULL,
+        estado TEXT NOT NULL,
+        wa_message_id TEXT,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_envios_campana ON whatsapp_envios(campana_id)
+    `);
+    // Una campaña que quedó a medias porque el servidor se reinició no se retoma sola.
+    await db.exec(`
+      UPDATE whatsapp_campanas SET estado = 'interrumpida', terminada_at = NOW() WHERE estado = 'enviando'
     `);
   } catch (e) {
-    console.warn('No se pudieron crear las tablas clientes/ventas_historial:', e.message);
+    console.warn('No se pudieron crear las tablas de clientes, historial y WhatsApp:', e.message);
   }
 }
 
@@ -2482,6 +2513,198 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
   } catch (err) {
     console.error('Error POST /api/admin/sorteos/:id/realizar:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ----- ADMIN: CRM de WhatsApp -----
+
+/**
+ * Clientes que autorizaron WhatsApp al comprar, con el teléfono ya en formato internacional.
+ * Un mismo teléfono con varias cédulas recibe un solo mensaje.
+ */
+async function destinatariosWhatsapp() {
+  const rows = await db.prepare(`
+    SELECT cedula, nombre, telefono, ciudad, acepta_whatsapp
+    FROM clientes
+    ORDER BY ultima_compra_at DESC NULLS LAST
+  `).all();
+  const lista = [];
+  const vistos = new Set();
+  let sinAutorizacion = 0;
+  let telefonoInvalido = 0;
+  for (const r of rows) {
+    if (!r.acepta_whatsapp) { sinAutorizacion++; continue; }
+    const telefono = whatsapp.normalizarTelefono(r.telefono);
+    if (!telefono) { telefonoInvalido++; continue; }
+    if (vistos.has(telefono)) continue;
+    vistos.add(telefono);
+    lista.push({ cedula: r.cedula, nombre: r.nombre || '', ciudad: r.ciudad || '', telefono });
+  }
+  return { lista, sinAutorizacion, telefonoInvalido, totalClientes: rows.length };
+}
+
+/** Reemplaza {nombre}, {nombre_completo} y {ciudad} en los valores que escribió el admin. */
+function valoresParaCliente(valores, cliente) {
+  const completo = String(cliente.nombre || '').trim().replace(/\s+/g, ' ');
+  const primero = completo.split(' ')[0] || '';
+  const nombre = primero ? primero.charAt(0).toUpperCase() + primero.slice(1).toLowerCase() : 'cliente';
+  return valores.map((v) => String(v ?? '')
+    .replace(/\{nombre\}/gi, nombre)
+    .replace(/\{nombre_completo\}/gi, completo || nombre)
+    .replace(/\{ciudad\}/gi, cliente.ciudad || ''));
+}
+
+/** Busca la plantilla aprobada y valida que lleguen todas sus variables. Lanza un Error con mensaje para el admin. */
+async function plantillaValidada(nombre, idioma, valores) {
+  const plantillas = await whatsapp.plantillasAprobadas();
+  const plantilla = plantillas.find((p) => p.nombre === nombre && p.idioma === idioma);
+  if (!plantilla) throw Object.assign(new Error('La plantilla no existe o aún no está aprobada por Meta.'), { status: 400 });
+  if (!Array.isArray(valores) || valores.length !== plantilla.variables.length || valores.some((v) => !String(v ?? '').trim())) {
+    throw Object.assign(new Error(`La plantilla pide ${plantilla.variables.length} valor(es); llénalos todos.`), { status: 400 });
+  }
+  return plantilla;
+}
+
+let campanaWhatsappEnCurso = null;
+
+/** Envía la campaña uno a uno en segundo plano. Se detiene si el token falla o Meta frena por calidad. */
+async function ejecutarCampanaWhatsapp(campanaId, plantilla, valores, lista) {
+  campanaWhatsappEnCurso = campanaId;
+  let enviados = 0;
+  let fallidos = 0;
+  let errorFatal = null;
+  try {
+    for (const cliente of lista) {
+      let estado = 'enviado';
+      let waId = null;
+      let error = null;
+      try {
+        waId = await whatsapp.enviarPlantilla(cliente.telefono, plantilla, valoresParaCliente(valores, cliente));
+        enviados++;
+      } catch (e) {
+        estado = 'fallido';
+        error = e.message;
+        fallidos++;
+        if (e.code === 190 || e.code === 131048 || e.code === 133010) errorFatal = e.message;
+      }
+      await db.prepare(`
+        INSERT INTO whatsapp_envios (campana_id, cedula, nombre, telefono, estado, wa_message_id, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(campanaId, cliente.cedula, cliente.nombre, cliente.telefono, estado, waId, error);
+      await db.prepare('UPDATE whatsapp_campanas SET enviados = ?, fallidos = ? WHERE id = ?').run(enviados, fallidos, campanaId);
+      if (errorFatal) break;
+      // Meta admite ~80 mensajes/s; ir despacio evita picos que bajen la calificación del número.
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  } catch (e) {
+    errorFatal = errorFatal || e.message;
+  } finally {
+    await db.prepare(`
+      UPDATE whatsapp_campanas SET estado = ?, error = ?, enviados = ?, fallidos = ?, terminada_at = NOW() WHERE id = ?
+    `).run(errorFatal ? 'detenida' : 'terminada', errorFatal, enviados, fallidos, campanaId).catch((e) => {
+      console.warn('No se pudo cerrar la campaña de WhatsApp', campanaId, e?.message);
+    });
+    campanaWhatsappEnCurso = null;
+  }
+}
+
+app.get('/api/admin/whatsapp/estado', async (req, res) => {
+  try {
+    const { lista, sinAutorizacion, telefonoInvalido, totalClientes } = await destinatariosWhatsapp();
+    const out = {
+      configurado: whatsapp.whatsappConfigurado(),
+      faltan: whatsapp.variablesFaltantes(),
+      numero: null,
+      plantillas: [],
+      error: null,
+      destinatarios: { total: lista.length, sinAutorizacion, telefonoInvalido, totalClientes },
+      campanaEnCurso: campanaWhatsappEnCurso
+    };
+    if (out.configurado) {
+      try {
+        out.numero = await whatsapp.estadoNumero();
+        out.plantillas = await whatsapp.plantillasAprobadas();
+      } catch (e) {
+        out.error = e.message;
+      }
+    }
+    res.json(toJSONSafe(out));
+  } catch (err) {
+    console.error('Error GET /api/admin/whatsapp/estado:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Manda la plantilla a un solo número (el del admin) para ver cómo llega antes de la campaña. */
+app.post('/api/admin/whatsapp/prueba', async (req, res) => {
+  try {
+    if (!whatsapp.whatsappConfigurado()) return res.status(400).json({ error: 'WhatsApp no está configurado en el servidor.' });
+    const { plantilla: nombre, idioma, valores, telefono: rawTel } = req.body || {};
+    const telefono = whatsapp.normalizarTelefono(rawTel);
+    if (!telefono) return res.status(400).json({ error: 'Escribe un celular de Colombia de 10 dígitos (ej. 3001234567).' });
+    const plantilla = await plantillaValidada(nombre, idioma, valores);
+    const id = await whatsapp.enviarPlantilla(telefono, plantilla, valoresParaCliente(valores, { nombre: 'Prueba', ciudad: '' }));
+    res.json({ ok: true, telefono, messageId: id });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/whatsapp/campanas', async (req, res) => {
+  try {
+    const campanas = await db.prepare(`
+      SELECT id, plantilla, idioma, valores, total, enviados, fallidos, estado, error, created_at, terminada_at
+      FROM whatsapp_campanas ORDER BY id DESC LIMIT 20
+    `).all();
+    res.json(toJSONSafe({ campanas }));
+  } catch (err) {
+    console.error('Error GET /api/admin/whatsapp/campanas:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/whatsapp/campanas/:id/fallidos', async (req, res) => {
+  try {
+    const envios = await db.prepare(`
+      SELECT nombre, telefono, error FROM whatsapp_envios WHERE campana_id = ? AND estado = 'fallido' ORDER BY id
+    `).all(Number(req.params.id));
+    res.json(toJSONSafe({ envios }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Inicia una campaña a todos los clientes con autorización. `confirmarTotal` debe coincidir con el
+ * número de destinatarios que vio el admin, para no enviar a una lista distinta de la que confirmó.
+ */
+app.post('/api/admin/whatsapp/campanas', async (req, res) => {
+  try {
+    if (!whatsapp.whatsappConfigurado()) return res.status(400).json({ error: 'WhatsApp no está configurado en el servidor.' });
+    if (campanaWhatsappEnCurso) return res.status(409).json({ error: 'Ya hay una campaña enviándose. Espera a que termine.' });
+    // Se aparta antes de los await para que un doble clic no arranque dos campañas.
+    campanaWhatsappEnCurso = 'preparando';
+    let lanzada = false;
+    try {
+      const { plantilla: nombre, idioma, valores, confirmarTotal } = req.body || {};
+      const plantilla = await plantillaValidada(nombre, idioma, valores);
+      const { lista } = await destinatariosWhatsapp();
+      if (lista.length === 0) return res.status(400).json({ error: 'No hay clientes con autorización de WhatsApp y celular válido.' });
+      if (Number(confirmarTotal) !== lista.length) {
+        return res.status(409).json({ error: `La lista cambió: ahora son ${lista.length} destinatarios. Revisa y confirma de nuevo.`, total: lista.length });
+      }
+      const { lastInsertRowid } = await db.prepare(`
+        INSERT INTO whatsapp_campanas (plantilla, idioma, valores, total) VALUES (?, ?, ?, ?)
+      `).run(plantilla.nombre, plantilla.idioma, JSON.stringify(valores), lista.length);
+      ejecutarCampanaWhatsapp(lastInsertRowid, plantilla, valores, lista);
+      lanzada = true;
+      res.status(202).json({ ok: true, campanaId: lastInsertRowid, total: lista.length });
+    } finally {
+      if (!lanzada) campanaWhatsappEnCurso = null;
+    }
+  } catch (err) {
+    console.error('Error POST /api/admin/whatsapp/campanas:', err?.message);
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

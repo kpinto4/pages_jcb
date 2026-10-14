@@ -51,6 +51,10 @@
           <span class="nav-icon" aria-hidden="true">★</span>
           Bendecidos
         </button>
+        <button type="button" class="nav-item" [class.active]="tab === 'whatsapp'" (click)="selectTab('whatsapp')">
+          <span class="nav-icon" aria-hidden="true">✉</span>
+          WhatsApp
+        </button>
         <button type="button" class="nav-item" [class.active]="tab === 'config'" (click)="selectTab('config')">
           <span class="nav-icon" aria-hidden="true">⚙</span>
           Configuración
@@ -738,6 +742,183 @@
         </section>
 
         <!-- CONFIGURACIÓN -->
+        <section *ngIf="tab === 'whatsapp'" class="view view--stack">
+          <div *ngIf="waCargando && !waEstado" class="loading">Consultando WhatsApp…</div>
+          <p class="error-msg" *ngIf="waError">{{ waError }}</p>
+
+          <ng-container *ngIf="waEstado as e">
+            <article class="admin-card">
+              <header class="card-head">
+                <div>
+                  <h2>Conexión</h2>
+                  <p class="muted">Número que envía los mensajes y a quién le llegarían.</p>
+                </div>
+                <button type="button" class="btn-outline" [disabled]="waCargando" (click)="cargarWhatsapp()">
+                  {{ waCargando ? 'Consultando...' : 'Actualizar' }}
+                </button>
+              </header>
+
+              <div class="diagnostico-grid">
+                <div class="diagnostico-item" [class.is-ok]="e.configurado && !e.error && e.numero?.status === 'CONNECTED'"
+                     [class.is-fail]="!e.configurado || !!e.error || (e.numero && e.numero.status !== 'CONNECTED')">
+                  <span class="diagnostico-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>Número de WhatsApp</strong>
+                    <p *ngIf="!e.configurado">Falta en server/.env: {{ e.faltan.join(', ') }}</p>
+                    <p *ngIf="e.configurado && e.error">{{ e.error }}</p>
+                    <p *ngIf="e.numero">
+                      {{ e.numero.display_phone_number }} · {{ e.numero.verified_name }} ·
+                      {{ e.numero.status === 'CONNECTED' ? 'Conectado' : e.numero.status }}
+                    </p>
+                  </div>
+                </div>
+                <div class="diagnostico-item" [class.is-ok]="e.destinatarios.total > 0" [class.is-fail]="e.destinatarios.total === 0">
+                  <span class="diagnostico-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>{{ e.destinatarios.total }} destinatarios</strong>
+                    <p>
+                      De {{ e.destinatarios.totalClientes }} clientes:
+                      {{ e.destinatarios.sinAutorizacion }} no autorizaron WhatsApp
+                      y {{ e.destinatarios.telefonoInvalido }} tienen un celular inválido.
+                    </p>
+                  </div>
+                </div>
+                <div class="diagnostico-item" *ngIf="e.numero" [class.is-ok]="e.numero.quality_rating !== 'RED'" [class.is-fail]="e.numero.quality_rating === 'RED'">
+                  <span class="diagnostico-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>Calidad y límite</strong>
+                    <p>
+                      Calidad: {{ e.numero.quality_rating === 'GREEN' ? 'buena' : e.numero.quality_rating === 'YELLOW' ? 'media' : e.numero.quality_rating === 'RED' ? 'baja' : 'sin datos aún' }}.
+                      <ng-container *ngIf="waLimiteDiario">Hasta {{ waLimiteDiario }} clientes distintos cada 24 h.</ng-container>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="admin-card" *ngIf="e.configurado && !e.error">
+              <header class="card-head">
+                <div>
+                  <h2>Enviar recordatorio</h2>
+                  <p class="muted">WhatsApp solo permite escribir primero con plantillas aprobadas por Meta.</p>
+                </div>
+              </header>
+
+              <p class="muted" *ngIf="e.plantillas.length === 0">
+                No hay plantillas aprobadas. Créalas en WhatsApp Manager → Plantillas de mensajes; Meta suele aprobarlas en minutos u horas.
+              </p>
+
+              <div class="config-form" *ngIf="e.plantillas.length > 0">
+                <div class="form-row">
+                  <label for="wa-plantilla">Plantilla</label>
+                  <select id="wa-plantilla" name="waPlantilla" [(ngModel)]="waPlantillaKey" (ngModelChange)="onWaPlantillaChange()">
+                    <option *ngFor="let p of e.plantillas" [value]="p.nombre + '|' + p.idioma">
+                      {{ p.nombre }} ({{ p.idioma }} · {{ p.categoria === 'MARKETING' ? 'marketing' : p.categoria === 'UTILITY' ? 'utilidad' : p.categoria }})
+                    </option>
+                  </select>
+                </div>
+
+                <ng-container *ngIf="waPlantilla as p">
+                  <div class="form-row" *ngFor="let v of p.variables; let i = index">
+                    <label [for]="'wa-var-' + i">Variable {{ waEtiquetaVariable(v) }}</label>
+                    <input [id]="'wa-var-' + i" type="text" [name]="'waVar' + i" [(ngModel)]="waValores[i]"
+                           placeholder="Ej: {nombre}, 25 de octubre, una moto 0 km...">
+                  </div>
+                  <small class="field-hint" *ngIf="p.variables.length > 0">
+                    Escribe <code>{{ waComodin('nombre') }}</code> para poner el primer nombre de cada cliente
+                    y <code>{{ waComodin('ciudad') }}</code> para su ciudad.
+                  </small>
+
+                  <div class="form-row">
+                    <label>Vista previa</label>
+                    <div class="wa-preview">{{ waVistaPrevia }}</div>
+                  </div>
+
+                  <div class="prueba-correo">
+                    <label for="wa-prueba">1. Enviar una prueba a tu WhatsApp</label>
+                    <div class="prueba-correo-row">
+                      <input id="wa-prueba" type="tel" name="waPrueba" placeholder="3001234567" [(ngModel)]="waTelefonoPrueba">
+                      <button type="button" class="btn-outline" [disabled]="waEnviandoPrueba || !waValoresCompletos || !waTelefonoPrueba.trim()" (click)="enviarWaPrueba()">
+                        {{ waEnviandoPrueba ? 'Enviando...' : 'Enviar prueba' }}
+                      </button>
+                    </div>
+                    <p class="config-ok" *ngIf="waResultadoPrueba">{{ waResultadoPrueba }}</p>
+                  </div>
+
+                  <div class="prueba-correo">
+                    <label>2. Enviar a todos los clientes autorizados</label>
+                    <p class="muted small" *ngIf="waLimiteDiario && e.destinatarios.total > waLimiteDiario">
+                      Son más destinatarios ({{ e.destinatarios.total }}) que el límite diario de Meta ({{ waLimiteDiario }}): los que pasen del límite fallarán y quedarán en la lista de fallidos.
+                    </p>
+                    <button type="button" class="btn-primary" *ngIf="!waConfirmando"
+                            [disabled]="!waValoresCompletos || e.destinatarios.total === 0 || !!waCampanaActiva"
+                            (click)="waConfirmando = true">
+                      Enviar a {{ e.destinatarios.total }} clientes
+                    </button>
+                    <div class="wa-confirm" *ngIf="waConfirmando">
+                      <p>¿Enviar <strong>{{ p.nombre }}</strong> a <strong>{{ e.destinatarios.total }}</strong> clientes? No se puede deshacer.</p>
+                      <button type="button" class="btn-primary" [disabled]="waIniciando" (click)="iniciarWaCampana()">
+                        {{ waIniciando ? 'Iniciando...' : 'Sí, enviar' }}
+                      </button>
+                      <button type="button" class="btn-outline" [disabled]="waIniciando" (click)="waConfirmando = false">Cancelar</button>
+                    </div>
+                  </div>
+                </ng-container>
+                <p class="error-msg" *ngIf="waErrorEnvio">{{ waErrorEnvio }}</p>
+              </div>
+            </article>
+
+            <article class="admin-card">
+              <header class="card-head">
+                <div>
+                  <h2>Envíos</h2>
+                  <p class="muted">Últimas campañas y su resultado.</p>
+                </div>
+              </header>
+              <div class="table-wrap" *ngIf="waCampanas.length > 0; else sinCampanas">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Plantilla</th>
+                      <th>Enviados</th>
+                      <th>Fallidos</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <ng-container *ngFor="let c of waCampanas">
+                      <tr>
+                        <td>{{ c.created_at | date:'short' }}</td>
+                        <td>{{ c.plantilla }}</td>
+                        <td>{{ c.enviados }} / {{ c.total }}</td>
+                        <td>
+                          <button type="button" class="btn-link" *ngIf="c.fallidos > 0; else ceroFallidos" (click)="verWaFallidos(c)">
+                            {{ c.fallidos }} (ver)
+                          </button>
+                          <ng-template #ceroFallidos>0</ng-template>
+                        </td>
+                        <td>
+                          {{ c.estado === 'enviando' ? 'Enviando…' : c.estado === 'terminada' ? 'Terminada' : c.estado === 'detenida' ? 'Detenida' : 'Interrumpida' }}
+                          <div class="muted small" *ngIf="c.error">{{ c.error }}</div>
+                        </td>
+                      </tr>
+                      <tr *ngIf="waFallidos?.campanaId === c.id">
+                        <td colspan="5">
+                          <ul class="wa-fallidos">
+                            <li *ngFor="let f of waFallidos!.envios">{{ f.nombre }} (+{{ f.telefono }}): {{ f.error }}</li>
+                          </ul>
+                        </td>
+                      </tr>
+                    </ng-container>
+                  </tbody>
+                </table>
+              </div>
+              <ng-template #sinCampanas><p class="muted">Aún no se ha enviado ninguna campaña.</p></ng-template>
+            </article>
+          </ng-container>
+        </section>
+
         <section *ngIf="tab === 'config'" class="view view--stack">
           <article class="admin-card">
             <header class="card-head">

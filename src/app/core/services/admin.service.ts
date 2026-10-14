@@ -128,6 +128,46 @@ export interface Diagnostico {
   publicApiUrl: string | null;
 }
 
+export interface WhatsappPlantilla {
+  nombre: string;
+  idioma: string;
+  categoria: string;
+  formato: 'POSITIONAL' | 'NAMED';
+  texto: string;
+  /** Variables del cuerpo en orden: ['1','2'] o ['nombre', ...]. */
+  variables: string[];
+}
+
+export interface WhatsappEstado {
+  configurado: boolean;
+  faltan: string[];
+  numero: {
+    display_phone_number: string;
+    verified_name: string;
+    status: string;
+    quality_rating?: string;
+    messaging_limit_tier?: string;
+  } | null;
+  plantillas: WhatsappPlantilla[];
+  error: string | null;
+  destinatarios: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number };
+  campanaEnCurso: number | string | null;
+}
+
+export interface WhatsappCampana {
+  id: number;
+  plantilla: string;
+  idioma: string;
+  valores: string | null;
+  total: number;
+  enviados: number;
+  fallidos: number;
+  estado: 'enviando' | 'terminada' | 'detenida' | 'interrumpida';
+  error: string | null;
+  created_at: string;
+  terminada_at: string | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -264,6 +304,29 @@ export class AdminService {
       `${this.base}/api/admin/probar-correo`,
       { email }
     );
+  }
+
+  getWhatsappEstado(): Observable<WhatsappEstado> {
+    return this.http.get<WhatsappEstado>(`${this.base}/api/admin/whatsapp/estado`);
+  }
+
+  getWhatsappCampanas(): Observable<{ campanas: WhatsappCampana[] }> {
+    return this.http.get<{ campanas: WhatsappCampana[] }>(`${this.base}/api/admin/whatsapp/campanas`);
+  }
+
+  getWhatsappFallidos(id: number): Observable<{ envios: Array<{ nombre: string; telefono: string; error: string }> }> {
+    return this.http.get<{ envios: Array<{ nombre: string; telefono: string; error: string }> }>(
+      `${this.base}/api/admin/whatsapp/campanas/${id}/fallidos`
+    );
+  }
+
+  enviarWhatsappPrueba(body: { plantilla: string; idioma: string; valores: string[]; telefono: string }): Observable<{ ok: boolean; telefono: string }> {
+    return this.http.post<{ ok: boolean; telefono: string }>(`${this.base}/api/admin/whatsapp/prueba`, body);
+  }
+
+  /** `confirmarTotal`: cantidad de destinatarios que el admin vio y confirmó. */
+  iniciarWhatsappCampana(body: { plantilla: string; idioma: string; valores: string[]; confirmarTotal: number }): Observable<{ ok: boolean; campanaId: number; total: number }> {
+    return this.http.post<{ ok: boolean; campanaId: number; total: number }>(`${this.base}/api/admin/whatsapp/campanas`, body);
   }
 
   realizarSorteo(id: number, numero_ganador: string): Observable<SorteoGanadorResponse | null> {

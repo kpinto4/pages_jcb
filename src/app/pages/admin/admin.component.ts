@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico, ResumenReemplazo } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico, ResumenReemplazo, WhatsappEstado, WhatsappCampana, WhatsappPlantilla } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -21,7 +21,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   loginError = '';
   loginLoading = false;
 
-  tab: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'config' = 'stats';
+  tab: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'whatsapp' | 'config' = 'stats';
   mobileNavOpen = false;
 
   get tabTitle(): string {
@@ -30,6 +30,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       orders: 'Ventas',
       sorteos: 'Sorteos',
       beneficios: 'Números bendecidos',
+      whatsapp: 'WhatsApp',
       config: 'Configuración'
     };
     return titles[this.tab];
@@ -41,6 +42,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       orders: 'Órdenes pagadas y pendientes de confirmación.',
       sorteos: 'Crear, editar y realizar premios mayores y anticipados.',
       beneficios: 'Ganadores de anticipados listos para contactar.',
+      whatsapp: 'Recordatorios a los clientes que autorizaron WhatsApp al comprar.',
       config: 'Precio, cupos de anticipados y mantenimiento.'
     };
     return subs[this.tab];
@@ -154,6 +156,23 @@ export class AdminComponent implements OnInit, OnDestroy {
   /** Muestra/oculta la configuración avanzada de porcentajes de anticipados. */
   mostrarConfigAnticipados = false;
 
+  /** CRM de WhatsApp */
+  waEstado: WhatsappEstado | null = null;
+  waCargando = false;
+  waError = '';
+  waCampanas: WhatsappCampana[] = [];
+  /** Clave `nombre|idioma` de la plantilla elegida. */
+  waPlantillaKey = '';
+  waValores: string[] = [];
+  waTelefonoPrueba = '';
+  waEnviandoPrueba = false;
+  waResultadoPrueba = '';
+  waErrorEnvio = '';
+  waConfirmando = false;
+  waIniciando = false;
+  waFallidos: { campanaId: number; envios: Array<{ nombre: string; telefono: string; error: string }> } | null = null;
+  private waPollingId: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private adminService: AdminService,
     private auth: AdminAuthService
@@ -174,10 +193,12 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopBeneficiosPolling();
+    this.stopWaPolling();
   }
 
-  selectTab(t: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'config'): void {
+  selectTab(t: 'stats' | 'orders' | 'sorteos' | 'beneficios' | 'whatsapp' | 'config'): void {
     if (this.tab === 'beneficios' && t !== 'beneficios') this.stopBeneficiosPolling();
+    if (this.tab === 'whatsapp' && t !== 'whatsapp') this.stopWaPolling();
     this.tab = t;
     this.mobileNavOpen = false;
     if (t === 'stats') {
@@ -189,6 +210,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (t === 'beneficios') {
       this.cargarBeneficios();
       this.startBeneficiosPolling();
+    }
+    if (t === 'whatsapp') {
+      this.cargarWhatsapp();
     }
     if (t === 'config' && !this.diagnostico) {
       this.ejecutarDiagnostico();
@@ -219,6 +243,162 @@ export class AdminComponent implements OnInit, OnDestroy {
         }
       }
     });
+  }
+
+  get waPlantilla(): WhatsappPlantilla | null {
+    return this.waEstado?.plantillas.find((p) => `${p.nombre}|${p.idioma}` === this.waPlantillaKey) ?? null;
+  }
+
+  /** Texto de la plantilla con los valores escritos, usando un cliente de ejemplo para {nombre}. */
+  get waVistaPrevia(): string {
+    const p = this.waPlantilla;
+    if (!p) return '';
+    let texto = p.texto;
+    p.variables.forEach((v, i) => {
+      const valor = (this.waValores[i] || `{{${v}}}`)
+        .replace(/\{nombre\}/gi, 'María')
+        .replace(/\{nombre_completo\}/gi, 'María Pérez')
+        .replace(/\{ciudad\}/gi, 'Bucaramanga');
+      texto = texto.split(`{{${v}}}`).join(valor);
+    });
+    return texto;
+  }
+
+  /** Las llaves no se pueden escribir tal cual en la plantilla de Angular. */
+  waEtiquetaVariable(v: string): string {
+    return `{{${v}}}`;
+  }
+
+  waComodin(nombre: string): string {
+    return `{${nombre}}`;
+  }
+
+  get waValoresCompletos(): boolean {
+    const p = this.waPlantilla;
+    return !!p && p.variables.every((_, i) => !!(this.waValores[i] || '').trim());
+  }
+
+  get waCampanaActiva(): WhatsappCampana | null {
+    return this.waCampanas.find((c) => c.estado === 'enviando') ?? null;
+  }
+
+  /** Meta limita los contactos nuevos por día según el nivel del número (TIER_250 = 250). */
+  get waLimiteDiario(): number | null {
+    const m = /TIER_(\d+)/.exec(this.waEstado?.numero?.messaging_limit_tier || '');
+    return m ? Number(m[1]) : null;
+  }
+
+  cargarWhatsapp(): void {
+    this.waCargando = true;
+    this.waError = '';
+    this.adminService.getWhatsappEstado().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (e) => {
+        this.waCargando = false;
+        this.waEstado = e;
+        if (!e.plantillas.some((p) => `${p.nombre}|${p.idioma}` === this.waPlantillaKey)) {
+          this.waPlantillaKey = e.plantillas.length ? `${e.plantillas[0].nombre}|${e.plantillas[0].idioma}` : '';
+          this.onWaPlantillaChange();
+        }
+      },
+      error: (err) => {
+        this.waCargando = false;
+        if (err?.status === 401) this.on401();
+        else this.waError = err?.error?.error || 'No se pudo consultar el estado de WhatsApp.';
+      }
+    });
+    this.cargarWaCampanas();
+  }
+
+  cargarWaCampanas(): void {
+    this.adminService.getWhatsappCampanas().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.waCampanas = r.campanas;
+        if (this.waCampanaActiva) this.startWaPolling();
+        else this.stopWaPolling();
+      },
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+      }
+    });
+  }
+
+  onWaPlantillaChange(): void {
+    this.waValores = (this.waPlantilla?.variables || []).map(() => '');
+    this.waResultadoPrueba = '';
+    this.waErrorEnvio = '';
+    this.waConfirmando = false;
+  }
+
+  enviarWaPrueba(): void {
+    const p = this.waPlantilla;
+    if (!p) return;
+    this.waEnviandoPrueba = true;
+    this.waResultadoPrueba = '';
+    this.waErrorEnvio = '';
+    this.adminService.enviarWhatsappPrueba({
+      plantilla: p.nombre, idioma: p.idioma, valores: this.waValores, telefono: this.waTelefonoPrueba
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.waEnviandoPrueba = false;
+        this.waResultadoPrueba = `Prueba enviada al +${r.telefono}. Revisa ese WhatsApp.`;
+      },
+      error: (err) => {
+        this.waEnviandoPrueba = false;
+        if (err?.status === 401) this.on401();
+        else this.waErrorEnvio = err?.error?.error || 'No se pudo enviar la prueba.';
+      }
+    });
+  }
+
+  iniciarWaCampana(): void {
+    const p = this.waPlantilla;
+    const total = this.waEstado?.destinatarios.total ?? 0;
+    if (!p || total === 0) return;
+    this.waIniciando = true;
+    this.waErrorEnvio = '';
+    this.adminService.iniciarWhatsappCampana({
+      plantilla: p.nombre, idioma: p.idioma, valores: this.waValores, confirmarTotal: total
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.waIniciando = false;
+        this.waConfirmando = false;
+        this.cargarWaCampanas();
+      },
+      error: (err) => {
+        this.waIniciando = false;
+        this.waConfirmando = false;
+        if (err?.status === 401) this.on401();
+        else {
+          this.waErrorEnvio = err?.error?.error || 'No se pudo iniciar la campaña.';
+          if (err?.status === 409) this.cargarWhatsapp();
+        }
+      }
+    });
+  }
+
+  verWaFallidos(c: WhatsappCampana): void {
+    if (this.waFallidos?.campanaId === c.id) {
+      this.waFallidos = null;
+      return;
+    }
+    this.adminService.getWhatsappFallidos(c.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => (this.waFallidos = { campanaId: c.id, envios: r.envios }),
+      error: (err) => {
+        if (err?.status === 401) this.on401();
+      }
+    });
+  }
+
+  private startWaPolling(): void {
+    if (this.waPollingId) return;
+    this.waPollingId = setInterval(() => this.cargarWaCampanas(), 4000);
+  }
+
+  private stopWaPolling(): void {
+    if (this.waPollingId) {
+      clearInterval(this.waPollingId);
+      this.waPollingId = null;
+    }
   }
 
   /** Envía un correo real para confirmar que los comprobantes llegan. */
