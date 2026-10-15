@@ -53,7 +53,10 @@ async function graph(pathAndQuery, { method = 'GET', body } = {}) {
 /** Traduce los errores de Meta más comunes a algo que el admin pueda resolver. */
 function explicarError(e) {
   if (!e) return '';
-  const detalle = e.error_data?.details || e.message || '';
+  const detalle = e.error_user_msg || e.error_data?.details || e.message || '';
+  if (e.error_subcode === 2388339) {
+    return 'La app de Meta no tiene el producto WhatsApp y no puede crear plantillas: créala en WhatsApp Manager → Plantillas de mensajes.';
+  }
   switch (e.code) {
     case 190: return 'El token de WhatsApp venció o no es válido. Genera uno nuevo y actualiza WHATSAPP_TOKEN.';
     case 100: return `Parámetro inválido: ${detalle}`;
@@ -82,23 +85,49 @@ function variablesDelCuerpo(texto) {
   return vistas;
 }
 
-/** Plantillas aprobadas de la cuenta, con el texto y las variables que pide el cuerpo. */
-export async function plantillasAprobadas() {
-  const data = await graph(`${wabaId()}/message_templates?fields=name,language,status,category,parameter_format,components&limit=100`);
-  return (data.data || [])
-    .filter((t) => t.status === 'APPROVED')
-    .map((t) => {
-      const body = (t.components || []).find((c) => c.type === 'BODY');
-      return {
-        nombre: t.name,
-        idioma: t.language,
-        categoria: t.category,
-        formato: t.parameter_format === 'NAMED' ? 'NAMED' : 'POSITIONAL',
-        texto: body?.text || '',
-        variables: variablesDelCuerpo(body?.text)
-      };
-    });
+/** Todas las plantillas de la cuenta (aprobadas, en revisión, rechazadas), con el texto y las variables del cuerpo. */
+export async function plantillas() {
+  const data = await graph(`${wabaId()}/message_templates?fields=name,language,status,category,parameter_format,components,rejected_reason&limit=100`);
+  return (data.data || []).map((t) => {
+    const body = (t.components || []).find((c) => c.type === 'BODY');
+    return {
+      nombre: t.name,
+      idioma: t.language,
+      categoria: t.category,
+      estado: t.status,
+      motivoRechazo: t.rejected_reason && t.rejected_reason !== 'NONE' ? t.rejected_reason : null,
+      formato: t.parameter_format === 'NAMED' ? 'NAMED' : 'POSITIONAL',
+      texto: body?.text || '',
+      variables: variablesDelCuerpo(body?.text)
+    };
+  });
 }
+
+export async function plantillasAprobadas() {
+  return (await plantillas()).filter((p) => p.estado === 'APPROVED');
+}
+
+/**
+ * Envía una plantilla nueva a revisión de Meta. `ejemplos` es un valor de muestra por cada {{n}} del texto
+ * (Meta los exige para revisar). `boton` es opcional: { texto, url }.
+ */
+export async function crearPlantilla({ nombre, categoria, texto, ejemplos, pie, boton }) {
+  const components = [{
+    type: 'BODY',
+    text: texto,
+    ...(ejemplos.length ? { example: { body_text: [ejemplos] } } : {})
+  }];
+  if (pie) components.push({ type: 'FOOTER', text: pie });
+  if (boton?.texto && boton?.url) {
+    components.push({ type: 'BUTTONS', buttons: [{ type: 'URL', text: boton.texto, url: boton.url }] });
+  }
+  return graph(`${wabaId()}/message_templates`, {
+    method: 'POST',
+    body: { name: nombre, language: 'es', category: categoria, components }
+  });
+}
+
+export { variablesDelCuerpo };
 
 /**
  * Número en formato internacional sin '+' (573001234567). Los celulares de Colombia vienen de la

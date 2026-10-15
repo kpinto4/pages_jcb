@@ -132,6 +132,9 @@ export interface WhatsappPlantilla {
   nombre: string;
   idioma: string;
   categoria: string;
+  /** APPROVED, PENDING, REJECTED, PAUSED... */
+  estado: string;
+  motivoRechazo: string | null;
   formato: 'POSITIONAL' | 'NAMED';
   texto: string;
   /** Variables del cuerpo en orden: ['1','2'] o ['nombre', ...]. */
@@ -150,15 +153,42 @@ export interface WhatsappEstado {
   } | null;
   plantillas: WhatsappPlantilla[];
   error: string | null;
-  destinatarios: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number; internos: number };
+  clientesWeb: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number };
+  numerosPrueba: number;
   campanaEnCurso: number | string | null;
+}
+
+/** Plantilla aprobada + los valores de sus variables, guardado con un nombre para reutilizarlo. */
+export interface WhatsappMensaje {
+  id: number;
+  nombre: string;
+  plantilla: string;
+  idioma: string;
+  valores: string[];
+  updated_at: string;
+}
+
+export interface WhatsappLista {
+  /** 'clientes' = clientes de la web (automática); número = lista importada. */
+  id: number | 'clientes';
+  nombre: string;
+  total: number;
+  automatica: boolean;
+  created_at: string | null;
+}
+
+export interface WhatsappContacto {
+  nombre: string;
+  telefono: string;
+  ciudad?: string;
 }
 
 export interface WhatsappCampana {
   id: number;
   plantilla: string;
   idioma: string;
-  valores: string | null;
+  mensaje_nombre: string | null;
+  lista_nombre: string | null;
   total: number;
   enviados: number;
   fallidos: number;
@@ -166,6 +196,16 @@ export interface WhatsappCampana {
   error: string | null;
   created_at: string;
   terminada_at: string | null;
+}
+
+export interface NuevaPlantillaWhatsapp {
+  nombre: string;
+  categoria: 'MARKETING' | 'UTILITY';
+  texto: string;
+  ejemplos: string[];
+  pie: string;
+  botonTexto: string;
+  botonUrl: string;
 }
 
 @Injectable({
@@ -310,6 +350,41 @@ export class AdminService {
     return this.http.get<WhatsappEstado>(`${this.base}/api/admin/whatsapp/estado`);
   }
 
+  crearWhatsappPlantilla(body: NuevaPlantillaWhatsapp): Observable<{ ok: boolean; estado: string }> {
+    return this.http.post<{ ok: boolean; estado: string }>(`${this.base}/api/admin/whatsapp/plantillas`, body);
+  }
+
+  getWhatsappMensajes(): Observable<{ mensajes: WhatsappMensaje[] }> {
+    return this.http.get<{ mensajes: WhatsappMensaje[] }>(`${this.base}/api/admin/whatsapp/mensajes`);
+  }
+
+  guardarWhatsappMensaje(m: { id?: number; nombre: string; plantilla: string; idioma: string; valores: string[] }): Observable<{ ok: boolean }> {
+    const body = { nombre: m.nombre, plantilla: m.plantilla, idioma: m.idioma, valores: m.valores };
+    return m.id
+      ? this.http.put<{ ok: boolean }>(`${this.base}/api/admin/whatsapp/mensajes/${m.id}`, body)
+      : this.http.post<{ ok: boolean }>(`${this.base}/api/admin/whatsapp/mensajes`, body);
+  }
+
+  eliminarWhatsappMensaje(id: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/api/admin/whatsapp/mensajes/${id}`);
+  }
+
+  getWhatsappListas(): Observable<{ listas: WhatsappLista[] }> {
+    return this.http.get<{ listas: WhatsappLista[] }>(`${this.base}/api/admin/whatsapp/listas`);
+  }
+
+  getWhatsappContactos(listaId: number | 'clientes'): Observable<{ total: number; contactos: WhatsappContacto[] }> {
+    return this.http.get<{ total: number; contactos: WhatsappContacto[] }>(`${this.base}/api/admin/whatsapp/listas/${listaId}/contactos`);
+  }
+
+  importarWhatsappLista(body: { nombre: string; contactos: WhatsappContacto[]; consentimiento: boolean }): Observable<{ ok: boolean; id: number; guardados: number; descartados: number }> {
+    return this.http.post<{ ok: boolean; id: number; guardados: number; descartados: number }>(`${this.base}/api/admin/whatsapp/listas`, body);
+  }
+
+  eliminarWhatsappLista(id: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.base}/api/admin/whatsapp/listas/${id}`);
+  }
+
   getWhatsappCampanas(): Observable<{ campanas: WhatsappCampana[] }> {
     return this.http.get<{ campanas: WhatsappCampana[] }>(`${this.base}/api/admin/whatsapp/campanas`);
   }
@@ -320,12 +395,12 @@ export class AdminService {
     );
   }
 
-  enviarWhatsappPrueba(body: { plantilla: string; idioma: string; valores: string[]; telefono: string }): Observable<{ ok: boolean; telefono: string }> {
+  enviarWhatsappPrueba(body: { mensajeId: number; telefono: string }): Observable<{ ok: boolean; telefono: string }> {
     return this.http.post<{ ok: boolean; telefono: string }>(`${this.base}/api/admin/whatsapp/prueba`, body);
   }
 
   /** `confirmarTotal`: cantidad de destinatarios que el admin vio y confirmó. */
-  iniciarWhatsappCampana(body: { plantilla: string; idioma: string; valores: string[]; confirmarTotal: number }): Observable<{ ok: boolean; campanaId: number; total: number }> {
+  iniciarWhatsappCampana(body: { mensajeId: number; listaId: number | 'clientes'; confirmarTotal: number }): Observable<{ ok: boolean; campanaId: number; total: number }> {
     return this.http.post<{ ok: boolean; campanaId: number; total: number }>(`${this.base}/api/admin/whatsapp/campanas`, body);
   }
 

@@ -166,7 +166,31 @@ if (db) {
         error TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_whatsapp_envios_campana ON whatsapp_envios(campana_id)
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_envios_campana ON whatsapp_envios(campana_id);
+      ALTER TABLE whatsapp_campanas ADD COLUMN IF NOT EXISTS lista_nombre TEXT;
+      ALTER TABLE whatsapp_campanas ADD COLUMN IF NOT EXISTS mensaje_nombre TEXT;
+      CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        plantilla TEXT NOT NULL,
+        idioma TEXT NOT NULL,
+        valores TEXT NOT NULL DEFAULT '[]',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS whatsapp_listas (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS whatsapp_lista_contactos (
+        id SERIAL PRIMARY KEY,
+        lista_id INTEGER NOT NULL,
+        nombre TEXT,
+        telefono TEXT NOT NULL,
+        ciudad TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_lista_contactos_lista ON whatsapp_lista_contactos(lista_id)
     `);
     // Una campaña que quedó a medias porque el servidor se reinició no se retoma sola.
     await db.exec(`
@@ -2517,18 +2541,27 @@ app.post('/api/admin/sorteos/:id/realizar', async (req, res) => {
 });
 
 // ----- ADMIN: CRM de WhatsApp -----
+// Mensajes guardados (plantilla aprobada + valores) que se envían a una lista: los clientes de la web que
+// autorizaron WhatsApp al comprar, o una lista importada desde Excel.
 
-/**
- * Clientes que autorizaron WhatsApp al comprar, con el teléfono ya en formato internacional.
- * Un mismo teléfono con varias cédulas recibe un solo mensaje.
- */
-async function destinatariosWhatsapp() {
+/** Celulares internos de WHATSAPP_NUMEROS_PRUEBA (separados por coma): reciben toda campaña, para ver lo que llega. */
+function numerosInternosWhatsapp() {
+  const out = [];
+  for (const raw of (process.env.WHATSAPP_NUMEROS_PRUEBA || '').split(/[,;\s]+/)) {
+    const telefono = whatsapp.normalizarTelefono(raw);
+    if (telefono && !out.includes(telefono)) out.push(telefono);
+  }
+  return out;
+}
+
+/** Clientes de la web que autorizaron WhatsApp, con el teléfono en formato internacional y sin repetir. */
+async function listaClientesWeb() {
   const rows = await db.prepare(`
     SELECT cedula, nombre, telefono, ciudad, acepta_whatsapp
     FROM clientes
     ORDER BY ultima_compra_at DESC NULLS LAST
   `).all();
-  const lista = [];
+  const contactos = [];
   const vistos = new Set();
   let sinAutorizacion = 0;
   let telefonoInvalido = 0;
@@ -2538,21 +2571,39 @@ async function destinatariosWhatsapp() {
     if (!telefono) { telefonoInvalido++; continue; }
     if (vistos.has(telefono)) continue;
     vistos.add(telefono);
-    lista.push({ cedula: r.cedula, nombre: r.nombre || '', ciudad: r.ciudad || '', telefono });
+    contactos.push({ cedula: r.cedula, nombre: r.nombre || '', ciudad: r.ciudad || '', telefono });
   }
-  // Números internos (separados por coma) que reciben toda campaña: para probar o ver lo que llega a los clientes.
-  const internos = [];
-  for (const raw of (process.env.WHATSAPP_NUMEROS_PRUEBA || '').split(/[,;\s]+/)) {
-    const telefono = whatsapp.normalizarTelefono(raw);
-    if (!telefono || vistos.has(telefono)) continue;
-    vistos.add(telefono);
-    internos.push(telefono);
-    lista.push({ cedula: null, nombre: 'Prueba', ciudad: '', telefono });
-  }
-  return { lista, sinAutorizacion, telefonoInvalido, totalClientes: rows.length, internos };
+  return { contactos, sinAutorizacion, telefonoInvalido, totalClientes: rows.length };
 }
 
-/** Reemplaza {nombre}, {nombre_completo} y {ciudad} en los valores que escribió el admin. */
+/**
+ * Destinatarios de una lista ('clientes' = clientes de la web, o el id de una lista importada),
+ * más los números internos de prueba. Lanza un Error con status 404 si la lista no existe.
+ */
+async function destinatariosDeLista(listaId) {
+  let nombreLista;
+  let contactos;
+  if (listaId === 'clientes') {
+    nombreLista = 'Clientes de la web';
+    contactos = (await listaClientesWeb()).contactos;
+  } else {
+    const lista = await db.prepare('SELECT id, nombre FROM whatsapp_listas WHERE id = ?').get(Number(listaId));
+    if (!lista) throw Object.assign(new Error('La lista no existe.'), { status: 404 });
+    nombreLista = lista.nombre;
+    contactos = (await db.prepare(`
+      SELECT nombre, telefono, ciudad FROM whatsapp_lista_contactos WHERE lista_id = ? ORDER BY id
+    `).all(lista.id)).map((c) => ({ cedula: null, nombre: c.nombre || '', ciudad: c.ciudad || '', telefono: c.telefono }));
+  }
+  const vistos = new Set(contactos.map((c) => c.telefono));
+  for (const telefono of numerosInternosWhatsapp()) {
+    if (vistos.has(telefono)) continue;
+    vistos.add(telefono);
+    contactos.push({ cedula: null, nombre: 'Prueba', ciudad: '', telefono });
+  }
+  return { nombreLista, contactos };
+}
+
+/** Reemplaza {nombre}, {nombre_completo} y {ciudad} en los valores guardados del mensaje. */
 function valoresParaCliente(valores, cliente) {
   const completo = String(cliente.nombre || '').trim().replace(/\s+/g, ' ');
   const primero = completo.split(' ')[0] || '';
@@ -2563,27 +2614,46 @@ function valoresParaCliente(valores, cliente) {
     .replace(/\{ciudad\}/gi, cliente.ciudad || ''));
 }
 
-/** Busca la plantilla aprobada y valida que lleguen todas sus variables. Lanza un Error con mensaje para el admin. */
-async function plantillaValidada(nombre, idioma, valores) {
-  const plantillas = await whatsapp.plantillasAprobadas();
-  const plantilla = plantillas.find((p) => p.nombre === nombre && p.idioma === idioma);
-  if (!plantilla) throw Object.assign(new Error('La plantilla no existe o aún no está aprobada por Meta.'), { status: 400 });
-  if (!Array.isArray(valores) || valores.length !== plantilla.variables.length || valores.some((v) => !String(v ?? '').trim())) {
-    throw Object.assign(new Error(`La plantilla pide ${plantilla.variables.length} valor(es); llénalos todos.`), { status: 400 });
+function parseValores(raw) {
+  try {
+    const v = JSON.parse(raw || '[]');
+    return Array.isArray(v) ? v.map((x) => String(x ?? '')) : [];
+  } catch {
+    return [];
   }
-  return plantilla;
+}
+
+/** Mensaje guardado + su plantilla aprobada, validando que tenga todos los valores. Lanza Error con status. */
+async function mensajeListoParaEnviar(mensajeId) {
+  const mensaje = await db.prepare('SELECT id, nombre, plantilla, idioma, valores FROM whatsapp_mensajes WHERE id = ?').get(Number(mensajeId));
+  if (!mensaje) throw Object.assign(new Error('El mensaje no existe.'), { status: 404 });
+  const valores = parseValores(mensaje.valores);
+  const plantilla = (await whatsapp.plantillasAprobadas()).find((p) => p.nombre === mensaje.plantilla && p.idioma === mensaje.idioma);
+  if (!plantilla) {
+    throw Object.assign(new Error(`La plantilla "${mensaje.plantilla}" no existe o aún no está aprobada por Meta.`), { status: 400 });
+  }
+  if (valores.length !== plantilla.variables.length || valores.some((v) => !v.trim())) {
+    throw Object.assign(new Error(`El mensaje "${mensaje.nombre}" necesita ${plantilla.variables.length} valor(es); edítalo y llénalos.`), { status: 400 });
+  }
+  return { mensaje, plantilla, valores };
+}
+
+function exigirWhatsappConfigurado(res) {
+  if (whatsapp.whatsappConfigurado()) return true;
+  res.status(400).json({ error: `WhatsApp no está configurado en el servidor. Falta: ${whatsapp.variablesFaltantes().join(', ')}.` });
+  return false;
 }
 
 let campanaWhatsappEnCurso = null;
 
 /** Envía la campaña uno a uno en segundo plano. Se detiene si el token falla o Meta frena por calidad. */
-async function ejecutarCampanaWhatsapp(campanaId, plantilla, valores, lista) {
+async function ejecutarCampanaWhatsapp(campanaId, plantilla, valores, contactos) {
   campanaWhatsappEnCurso = campanaId;
   let enviados = 0;
   let fallidos = 0;
   let errorFatal = null;
   try {
-    for (const cliente of lista) {
+    for (const cliente of contactos) {
       let estado = 'enviado';
       let waId = null;
       let error = null;
@@ -2619,20 +2689,21 @@ async function ejecutarCampanaWhatsapp(campanaId, plantilla, valores, lista) {
 
 app.get('/api/admin/whatsapp/estado', async (req, res) => {
   try {
-    const { lista, sinAutorizacion, telefonoInvalido, totalClientes, internos } = await destinatariosWhatsapp();
+    const { contactos, sinAutorizacion, telefonoInvalido, totalClientes } = await listaClientesWeb();
     const out = {
       configurado: whatsapp.whatsappConfigurado(),
       faltan: whatsapp.variablesFaltantes(),
       numero: null,
       plantillas: [],
       error: null,
-      destinatarios: { total: lista.length, sinAutorizacion, telefonoInvalido, totalClientes, internos: internos.length },
+      clientesWeb: { total: contactos.length, sinAutorizacion, telefonoInvalido, totalClientes },
+      numerosPrueba: numerosInternosWhatsapp().length,
       campanaEnCurso: campanaWhatsappEnCurso
     };
     if (out.configurado) {
       try {
         out.numero = await whatsapp.estadoNumero();
-        out.plantillas = await whatsapp.plantillasAprobadas();
+        out.plantillas = await whatsapp.plantillas();
       } catch (e) {
         out.error = e.message;
       }
@@ -2644,14 +2715,185 @@ app.get('/api/admin/whatsapp/estado', async (req, res) => {
   }
 });
 
-/** Manda la plantilla a un solo número (el del admin) para ver cómo llega antes de la campaña. */
+/** Envía una plantilla nueva a revisión de Meta. */
+app.post('/api/admin/whatsapp/plantillas', async (req, res) => {
+  try {
+    if (!exigirWhatsappConfigurado(res)) return;
+    const b = req.body || {};
+    const nombre = String(b.nombre || '').trim().toLowerCase();
+    const texto = String(b.texto || '').trim();
+    const categoria = b.categoria === 'UTILITY' ? 'UTILITY' : 'MARKETING';
+    if (!/^[a-z0-9_]{1,100}$/.test(nombre)) {
+      return res.status(400).json({ error: 'El nombre solo puede tener minúsculas, números y guion bajo (ej. nuevo_sorteo).' });
+    }
+    if (!texto || texto.length > 1024) return res.status(400).json({ error: 'Escribe el texto del mensaje (máximo 1024 caracteres).' });
+    const variables = whatsapp.variablesDelCuerpo(texto);
+    const ejemplos = Array.isArray(b.ejemplos) ? b.ejemplos.map((e) => String(e ?? '').trim()) : [];
+    if (ejemplos.length !== variables.length || ejemplos.some((e) => !e)) {
+      return res.status(400).json({ error: `El texto tiene ${variables.length} variable(s): escribe un ejemplo para cada una.` });
+    }
+    const pie = String(b.pie || '').trim().slice(0, 60);
+    const boton = b.botonTexto && b.botonUrl
+      ? { texto: String(b.botonTexto).trim().slice(0, 25), url: String(b.botonUrl).trim() }
+      : null;
+    if (boton && !/^https:\/\/\S+$/.test(boton.url)) return res.status(400).json({ error: 'El enlace del botón debe empezar por https://' });
+    const r = await whatsapp.crearPlantilla({ nombre, categoria, texto, ejemplos, pie, boton });
+    res.status(201).json({ ok: true, id: r.id, estado: r.status });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+// --- Mensajes guardados ---
+
+app.get('/api/admin/whatsapp/mensajes', async (req, res) => {
+  try {
+    const rows = await db.prepare('SELECT id, nombre, plantilla, idioma, valores, updated_at FROM whatsapp_mensajes ORDER BY nombre').all();
+    res.json(toJSONSafe({ mensajes: rows.map((m) => ({ ...m, valores: parseValores(m.valores) })) }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function datosMensaje(body) {
+  const nombre = String(body?.nombre || '').trim().slice(0, 80);
+  const plantilla = String(body?.plantilla || '').trim();
+  const idioma = String(body?.idioma || '').trim();
+  const valores = Array.isArray(body?.valores) ? body.valores.map((v) => String(v ?? '')) : [];
+  if (!nombre) throw Object.assign(new Error('Ponle un nombre al mensaje.'), { status: 400 });
+  if (!plantilla || !idioma) throw Object.assign(new Error('Elige una plantilla.'), { status: 400 });
+  return { nombre, plantilla, idioma, valores: JSON.stringify(valores) };
+}
+
+app.post('/api/admin/whatsapp/mensajes', async (req, res) => {
+  try {
+    const m = datosMensaje(req.body);
+    const { lastInsertRowid } = await db.prepare(`
+      INSERT INTO whatsapp_mensajes (nombre, plantilla, idioma, valores) VALUES (?, ?, ?, ?)
+    `).run(m.nombre, m.plantilla, m.idioma, m.valores);
+    res.status(201).json({ ok: true, id: lastInsertRowid });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/whatsapp/mensajes/:id', async (req, res) => {
+  try {
+    const m = datosMensaje(req.body);
+    await db.prepare(`
+      UPDATE whatsapp_mensajes SET nombre = ?, plantilla = ?, idioma = ?, valores = ?, updated_at = NOW() WHERE id = ?
+    `).run(m.nombre, m.plantilla, m.idioma, m.valores, Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/whatsapp/mensajes/:id', async (req, res) => {
+  try {
+    await db.prepare('DELETE FROM whatsapp_mensajes WHERE id = ?').run(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Listas de contactos ---
+
+app.get('/api/admin/whatsapp/listas', async (req, res) => {
+  try {
+    const web = await listaClientesWeb();
+    const importadas = await db.prepare(`
+      SELECT l.id, l.nombre, l.created_at, COUNT(c.id) AS total
+      FROM whatsapp_listas l
+      LEFT JOIN whatsapp_lista_contactos c ON c.lista_id = l.id
+      GROUP BY l.id, l.nombre, l.created_at
+      ORDER BY l.created_at DESC
+    `).all();
+    res.json(toJSONSafe({
+      listas: [
+        { id: 'clientes', nombre: 'Clientes de la web', total: web.contactos.length, automatica: true, created_at: null },
+        ...importadas.map((l) => ({ ...l, total: Number(l.total), automatica: false }))
+      ]
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/whatsapp/listas/:id/contactos', async (req, res) => {
+  try {
+    const { contactos } = await destinatariosDeLista(req.params.id === 'clientes' ? 'clientes' : req.params.id);
+    res.json(toJSONSafe({ total: contactos.length, contactos: contactos.slice(0, 200).map(({ nombre, telefono, ciudad }) => ({ nombre, telefono, ciudad })) }));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+/**
+ * Guarda una lista importada (el Excel se lee en el navegador y llega como filas nombre/telefono/ciudad).
+ * Exige `consentimiento: true`: solo se puede escribir a quien aceptó recibir mensajes.
+ */
+app.post('/api/admin/whatsapp/listas', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nombre = String(b.nombre || '').trim().slice(0, 80);
+    if (!nombre) return res.status(400).json({ error: 'Ponle un nombre a la lista.' });
+    if (b.consentimiento !== true) {
+      return res.status(400).json({ error: 'Confirma que estas personas aceptaron recibir mensajes de WhatsApp.' });
+    }
+    const filas = Array.isArray(b.contactos) ? b.contactos.slice(0, 20000) : [];
+    const vistos = new Set();
+    const validos = [];
+    let descartados = 0;
+    for (const f of filas) {
+      const telefono = whatsapp.normalizarTelefono(f?.telefono);
+      if (!telefono || vistos.has(telefono)) { descartados++; continue; }
+      vistos.add(telefono);
+      validos.push({ nombre: String(f?.nombre || '').trim().slice(0, 120), telefono, ciudad: String(f?.ciudad || '').trim().slice(0, 80) });
+    }
+    if (validos.length === 0) return res.status(400).json({ error: 'El archivo no tiene celulares válidos de Colombia.' });
+    let listaId;
+    const guardar = db.transaction(async (tx) => {
+      const { lastInsertRowid } = await tx.prepare('INSERT INTO whatsapp_listas (nombre) VALUES (?)').run(nombre);
+      listaId = lastInsertRowid;
+      // Por bloques: fila a fila, una lista de miles de contactos tardaría minutos contra Neon.
+      for (let i = 0; i < validos.length; i += 500) {
+        const bloque = validos.slice(i, i + 500);
+        await tx.prepare(`
+          INSERT INTO whatsapp_lista_contactos (lista_id, nombre, telefono, ciudad)
+          VALUES ${bloque.map(() => '(?, ?, ?, ?)').join(', ')}
+        `).run(...bloque.flatMap((c) => [listaId, c.nombre, c.telefono, c.ciudad]));
+      }
+    });
+    await guardar();
+    res.status(201).json({ ok: true, id: listaId, guardados: validos.length, descartados });
+  } catch (err) {
+    console.error('Error POST /api/admin/whatsapp/listas:', err?.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/whatsapp/listas/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await db.prepare('DELETE FROM whatsapp_lista_contactos WHERE lista_id = ?').run(id);
+    await db.prepare('DELETE FROM whatsapp_listas WHERE id = ?').run(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Envíos ---
+
+/** Manda un mensaje guardado a un solo número (el del admin) para ver cómo llega. */
 app.post('/api/admin/whatsapp/prueba', async (req, res) => {
   try {
-    if (!whatsapp.whatsappConfigurado()) return res.status(400).json({ error: 'WhatsApp no está configurado en el servidor.' });
-    const { plantilla: nombre, idioma, valores, telefono: rawTel } = req.body || {};
-    const telefono = whatsapp.normalizarTelefono(rawTel);
+    if (!exigirWhatsappConfigurado(res)) return;
+    const telefono = whatsapp.normalizarTelefono(req.body?.telefono);
     if (!telefono) return res.status(400).json({ error: 'Escribe un celular de Colombia de 10 dígitos (ej. 3001234567).' });
-    const plantilla = await plantillaValidada(nombre, idioma, valores);
+    const { plantilla, valores } = await mensajeListoParaEnviar(req.body?.mensajeId);
     const id = await whatsapp.enviarPlantilla(telefono, plantilla, valoresParaCliente(valores, { nombre: 'Prueba', ciudad: '' }));
     res.json({ ok: true, telefono, messageId: id });
   } catch (err) {
@@ -2662,7 +2904,7 @@ app.post('/api/admin/whatsapp/prueba', async (req, res) => {
 app.get('/api/admin/whatsapp/campanas', async (req, res) => {
   try {
     const campanas = await db.prepare(`
-      SELECT id, plantilla, idioma, valores, total, enviados, fallidos, estado, error, created_at, terminada_at
+      SELECT id, plantilla, idioma, mensaje_nombre, lista_nombre, total, enviados, fallidos, estado, error, created_at, terminada_at
       FROM whatsapp_campanas ORDER BY id DESC LIMIT 20
     `).all();
     res.json(toJSONSafe({ campanas }));
@@ -2684,30 +2926,30 @@ app.get('/api/admin/whatsapp/campanas/:id/fallidos', async (req, res) => {
 });
 
 /**
- * Inicia una campaña a todos los clientes con autorización. `confirmarTotal` debe coincidir con el
- * número de destinatarios que vio el admin, para no enviar a una lista distinta de la que confirmó.
+ * Inicia una campaña: un mensaje guardado a una lista. `confirmarTotal` debe coincidir con el número de
+ * destinatarios que vio el admin, para no enviar a una lista distinta de la que confirmó.
  */
 app.post('/api/admin/whatsapp/campanas', async (req, res) => {
   try {
-    if (!whatsapp.whatsappConfigurado()) return res.status(400).json({ error: 'WhatsApp no está configurado en el servidor.' });
+    if (!exigirWhatsappConfigurado(res)) return;
     if (campanaWhatsappEnCurso) return res.status(409).json({ error: 'Ya hay una campaña enviándose. Espera a que termine.' });
     // Se aparta antes de los await para que un doble clic no arranque dos campañas.
     campanaWhatsappEnCurso = 'preparando';
     let lanzada = false;
     try {
-      const { plantilla: nombre, idioma, valores, confirmarTotal } = req.body || {};
-      const plantilla = await plantillaValidada(nombre, idioma, valores);
-      const { lista } = await destinatariosWhatsapp();
-      if (lista.length === 0) return res.status(400).json({ error: 'No hay clientes con autorización de WhatsApp y celular válido.' });
-      if (Number(confirmarTotal) !== lista.length) {
-        return res.status(409).json({ error: `La lista cambió: ahora son ${lista.length} destinatarios. Revisa y confirma de nuevo.`, total: lista.length });
+      const { mensajeId, listaId, confirmarTotal } = req.body || {};
+      const { mensaje, plantilla, valores } = await mensajeListoParaEnviar(mensajeId);
+      const { nombreLista, contactos } = await destinatariosDeLista(listaId === 'clientes' ? 'clientes' : listaId);
+      if (contactos.length === 0) return res.status(400).json({ error: 'La lista no tiene destinatarios.' });
+      if (Number(confirmarTotal) !== contactos.length) {
+        return res.status(409).json({ error: `La lista cambió: ahora son ${contactos.length} destinatarios. Revisa y confirma de nuevo.`, total: contactos.length });
       }
       const { lastInsertRowid } = await db.prepare(`
-        INSERT INTO whatsapp_campanas (plantilla, idioma, valores, total) VALUES (?, ?, ?, ?)
-      `).run(plantilla.nombre, plantilla.idioma, JSON.stringify(valores), lista.length);
-      ejecutarCampanaWhatsapp(lastInsertRowid, plantilla, valores, lista);
+        INSERT INTO whatsapp_campanas (plantilla, idioma, valores, total, mensaje_nombre, lista_nombre) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(plantilla.nombre, plantilla.idioma, JSON.stringify(valores), contactos.length, mensaje.nombre, nombreLista);
+      ejecutarCampanaWhatsapp(lastInsertRowid, plantilla, valores, contactos);
       lanzada = true;
-      res.status(202).json({ ok: true, campanaId: lastInsertRowid, total: lista.length });
+      res.status(202).json({ ok: true, campanaId: lastInsertRowid, total: contactos.length });
     } finally {
       if (!lanzada) campanaWhatsappEnCurso = null;
     }

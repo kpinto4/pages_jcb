@@ -751,13 +751,12 @@
               <header class="card-head">
                 <div>
                   <h2>Conexión</h2>
-                  <p class="muted">Número que envía los mensajes y a quién le llegarían.</p>
+                  <p class="muted">Número que envía los mensajes.</p>
                 </div>
                 <button type="button" class="btn-outline" [disabled]="waCargando" (click)="cargarWhatsapp()">
                   {{ waCargando ? 'Consultando...' : 'Actualizar' }}
                 </button>
               </header>
-
               <div class="diagnostico-grid">
                 <div class="diagnostico-item" [class.is-ok]="e.configurado && !e.error && e.numero?.status === 'CONNECTED'"
                      [class.is-fail]="!e.configurado || !!e.error || (e.numero && e.numero.status !== 'CONNECTED')">
@@ -772,20 +771,6 @@
                     </p>
                   </div>
                 </div>
-                <div class="diagnostico-item" [class.is-ok]="e.destinatarios.total > 0" [class.is-fail]="e.destinatarios.total === 0">
-                  <span class="diagnostico-dot" aria-hidden="true"></span>
-                  <div>
-                    <strong>{{ e.destinatarios.total }} destinatarios</strong>
-                    <p>
-                      De {{ e.destinatarios.totalClientes }} clientes:
-                      {{ e.destinatarios.sinAutorizacion }} no autorizaron WhatsApp
-                      y {{ e.destinatarios.telefonoInvalido }} tienen un celular inválido.
-                    </p>
-                    <p *ngIf="e.destinatarios.internos > 0">
-                      Incluye {{ e.destinatarios.internos }} número(s) de prueba (WHATSAPP_NUMEROS_PRUEBA).
-                    </p>
-                  </div>
-                </div>
                 <div class="diagnostico-item" *ngIf="e.numero" [class.is-ok]="e.numero.quality_rating !== 'RED'" [class.is-fail]="e.numero.quality_rating === 'RED'">
                   <span class="diagnostico-dot" aria-hidden="true"></span>
                   <div>
@@ -796,52 +781,66 @@
                     </p>
                   </div>
                 </div>
+                <div class="diagnostico-item" [class.is-ok]="e.clientesWeb.total > 0">
+                  <span class="diagnostico-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>Clientes de la web: {{ e.clientesWeb.total }}</strong>
+                    <p>
+                      De {{ e.clientesWeb.totalClientes }} clientes, {{ e.clientesWeb.sinAutorizacion }} no autorizaron WhatsApp
+                      y {{ e.clientesWeb.telefonoInvalido }} tienen un celular inválido.
+                      <ng-container *ngIf="e.numerosPrueba">Además {{ e.numerosPrueba }} número(s) de prueba reciben cada envío.</ng-container>
+                    </p>
+                  </div>
+                </div>
               </div>
             </article>
 
-            <article class="admin-card" *ngIf="e.configurado && !e.error">
-              <header class="card-head">
-                <div>
-                  <h2>Enviar recordatorio</h2>
-                  <p class="muted">WhatsApp solo permite escribir primero con plantillas aprobadas por Meta.</p>
-                </div>
-              </header>
+            <nav class="wa-tabs" aria-label="Secciones de WhatsApp">
+              <button type="button" [class.active]="waSeccion === 'enviar'" (click)="waSeccion = 'enviar'">Enviar</button>
+              <button type="button" [class.active]="waSeccion === 'mensajes'" (click)="waSeccion = 'mensajes'">Mensajes ({{ waMensajes.length }})</button>
+              <button type="button" [class.active]="waSeccion === 'listas'" (click)="waSeccion = 'listas'">Listas ({{ waListas.length }})</button>
+              <button type="button" [class.active]="waSeccion === 'plantillas'" (click)="waSeccion = 'plantillas'">Plantillas de Meta ({{ e.plantillas.length }})</button>
+            </nav>
 
-              <p class="muted" *ngIf="e.plantillas.length === 0">
-                No hay plantillas aprobadas. Créalas en WhatsApp Manager → Plantillas de mensajes; Meta suele aprobarlas en minutos u horas.
-              </p>
-
-              <div class="config-form" *ngIf="e.plantillas.length > 0">
-                <div class="form-row">
-                  <label for="wa-plantilla">Plantilla</label>
-                  <select id="wa-plantilla" name="waPlantilla" [(ngModel)]="waPlantillaKey" (ngModelChange)="onWaPlantillaChange()">
-                    <option *ngFor="let p of e.plantillas" [value]="p.nombre + '|' + p.idioma">
-                      {{ p.nombre }} ({{ p.idioma }} · {{ p.categoria === 'MARKETING' ? 'marketing' : p.categoria === 'UTILITY' ? 'utilidad' : p.categoria }})
-                    </option>
-                  </select>
-                </div>
-
-                <ng-container *ngIf="waPlantilla as p">
-                  <div class="form-row" *ngFor="let v of p.variables; let i = index">
-                    <label [for]="'wa-var-' + i">Variable {{ waEtiquetaVariable(v) }}</label>
-                    <input [id]="'wa-var-' + i" type="text" [name]="'waVar' + i" [(ngModel)]="waValores[i]"
-                           placeholder="Ej: {nombre}, 25 de octubre, una moto 0 km...">
+            <!-- ENVIAR -->
+            <ng-container *ngIf="waSeccion === 'enviar'">
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Enviar mensaje</h2>
+                    <p class="muted">Elige un mensaje guardado y la lista que lo recibe.</p>
                   </div>
-                  <small class="field-hint" *ngIf="p.variables.length > 0">
-                    Escribe <code>{{ waComodin('nombre') }}</code> para poner el primer nombre de cada cliente
-                    y <code>{{ waComodin('ciudad') }}</code> para su ciudad.
-                  </small>
-
+                </header>
+                <p class="muted" *ngIf="waMensajes.length === 0">
+                  Aún no hay mensajes guardados. Créalo en la pestaña <button type="button" class="btn-link" (click)="waSeccion = 'mensajes'">Mensajes</button>.
+                </p>
+                <div class="config-form" *ngIf="waMensajes.length > 0">
                   <div class="form-row">
-                    <label>Vista previa</label>
-                    <div class="wa-preview">{{ waVistaPrevia }}</div>
+                    <label for="wa-envio-mensaje">Mensaje</label>
+                    <select id="wa-envio-mensaje" name="waEnvioMensaje" [(ngModel)]="waEnvioMensajeId" (ngModelChange)="onWaEnvioChange()">
+                      <option *ngFor="let m of waMensajes" [ngValue]="m.id">{{ m.nombre }}</option>
+                    </select>
                   </div>
+                  <div class="form-row">
+                    <label for="wa-envio-lista">Lista</label>
+                    <select id="wa-envio-lista" name="waEnvioLista" [(ngModel)]="waEnvioListaId" (ngModelChange)="onWaEnvioChange()">
+                      <option *ngFor="let l of waListas" [ngValue]="l.id">{{ l.nombre }} ({{ l.total }})</option>
+                    </select>
+                  </div>
+
+                  <ng-container *ngIf="waMensajeEnvio as m">
+                    <div class="form-row">
+                      <label>Vista previa</label>
+                      <div class="wa-preview">{{ waVistaPrevia(waPlantillaDe(m.plantilla, m.idioma), m.valores) }}</div>
+                    </div>
+                    <p class="error-msg" *ngIf="waProblemaMensaje">{{ waProblemaMensaje }}</p>
+                  </ng-container>
 
                   <div class="prueba-correo">
                     <label for="wa-prueba">1. Enviar una prueba a tu WhatsApp</label>
                     <div class="prueba-correo-row">
                       <input id="wa-prueba" type="tel" name="waPrueba" placeholder="3001234567" [(ngModel)]="waTelefonoPrueba">
-                      <button type="button" class="btn-outline" [disabled]="waEnviandoPrueba || !waValoresCompletos || !waTelefonoPrueba.trim()" (click)="enviarWaPrueba()">
+                      <button type="button" class="btn-outline" [disabled]="waEnviandoPrueba || !!waProblemaMensaje || !waTelefonoPrueba.trim()" (click)="enviarWaPrueba()">
                         {{ waEnviandoPrueba ? 'Enviando...' : 'Enviar prueba' }}
                       </button>
                     </div>
@@ -849,76 +848,279 @@
                   </div>
 
                   <div class="prueba-correo">
-                    <label>2. Enviar a todos los clientes autorizados</label>
-                    <p class="muted small" *ngIf="waLimiteDiario && e.destinatarios.total > waLimiteDiario">
-                      Son más destinatarios ({{ e.destinatarios.total }}) que el límite diario de Meta ({{ waLimiteDiario }}): los que pasen del límite fallarán y quedarán en la lista de fallidos.
+                    <label>2. Enviar a la lista</label>
+                    <p class="muted small" *ngIf="waLimiteDiario && waTotalEnvio > waLimiteDiario">
+                      Son {{ waTotalEnvio }} destinatarios y el límite diario de Meta es {{ waLimiteDiario }}: los que pasen del límite fallarán.
                     </p>
                     <button type="button" class="btn-primary" *ngIf="!waConfirmando"
-                            [disabled]="!waValoresCompletos || e.destinatarios.total === 0 || !!waCampanaActiva"
+                            [disabled]="!!waProblemaMensaje || waTotalEnvio === 0 || !!waCampanaActiva"
                             (click)="waConfirmando = true">
-                      Enviar a {{ e.destinatarios.total }} clientes
+                      Enviar a {{ waTotalEnvio }} contacto(s)
                     </button>
                     <div class="wa-confirm" *ngIf="waConfirmando">
-                      <p>¿Enviar <strong>{{ p.nombre }}</strong> a <strong>{{ e.destinatarios.total }}</strong> clientes? No se puede deshacer.</p>
+                      <p>¿Enviar <strong>{{ waMensajeEnvio?.nombre }}</strong> a <strong>{{ waTotalEnvio }}</strong> contactos de <strong>{{ waListaEnvio?.nombre }}</strong>? No se puede deshacer.</p>
                       <button type="button" class="btn-primary" [disabled]="waIniciando" (click)="iniciarWaCampana()">
                         {{ waIniciando ? 'Iniciando...' : 'Sí, enviar' }}
                       </button>
                       <button type="button" class="btn-outline" [disabled]="waIniciando" (click)="waConfirmando = false">Cancelar</button>
                     </div>
                   </div>
+                  <p class="error-msg" *ngIf="waErrorEnvio">{{ waErrorEnvio }}</p>
+                </div>
+              </article>
+
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Envíos</h2>
+                    <p class="muted">Últimas campañas y su resultado.</p>
+                  </div>
+                </header>
+                <div class="table-wrap" *ngIf="waCampanas.length > 0; else sinCampanas">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Mensaje</th>
+                        <th>Lista</th>
+                        <th>Enviados</th>
+                        <th>Fallidos</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <ng-container *ngFor="let c of waCampanas">
+                        <tr>
+                          <td>{{ c.created_at | date:'short' }}</td>
+                          <td>{{ c.mensaje_nombre || c.plantilla }}</td>
+                          <td>{{ c.lista_nombre || 'Clientes de la web' }}</td>
+                          <td>{{ c.enviados }} / {{ c.total }}</td>
+                          <td>
+                            <button type="button" class="btn-link" *ngIf="c.fallidos > 0; else ceroFallidos" (click)="verWaFallidos(c)">
+                              {{ c.fallidos }} (ver)
+                            </button>
+                            <ng-template #ceroFallidos>0</ng-template>
+                          </td>
+                          <td>
+                            {{ c.estado === 'enviando' ? 'Enviando…' : c.estado === 'terminada' ? 'Terminada' : c.estado === 'detenida' ? 'Detenida' : 'Interrumpida' }}
+                            <div class="muted small" *ngIf="c.error">{{ c.error }}</div>
+                          </td>
+                        </tr>
+                        <tr *ngIf="waFallidos?.campanaId === c.id">
+                          <td colspan="6">
+                            <ul class="wa-fallidos">
+                              <li *ngFor="let f of waFallidos!.envios">{{ f.nombre }} (+{{ f.telefono }}): {{ f.error }}</li>
+                            </ul>
+                          </td>
+                        </tr>
+                      </ng-container>
+                    </tbody>
+                  </table>
+                </div>
+                <ng-template #sinCampanas><p class="muted">Aún no se ha enviado ninguna campaña.</p></ng-template>
+              </article>
+            </ng-container>
+
+            <!-- MENSAJES -->
+            <article class="admin-card" *ngIf="waSeccion === 'mensajes'">
+              <header class="card-head">
+                <div>
+                  <h2>Mensajes guardados</h2>
+                  <p class="muted">Una plantilla aprobada con sus valores ya escritos, lista para enviar.</p>
+                </div>
+                <button type="button" class="btn-primary" *ngIf="!waMensajeForm" [disabled]="waPlantillasAprobadas.length === 0" (click)="nuevoWaMensaje()">
+                  + Nuevo mensaje
+                </button>
+              </header>
+              <p class="muted" *ngIf="waPlantillasAprobadas.length === 0">
+                Necesitas al menos una plantilla aprobada por Meta. Revisa la pestaña
+                <button type="button" class="btn-link" (click)="waSeccion = 'plantillas'">Plantillas de Meta</button>.
+              </p>
+
+              <div class="config-form wa-form" *ngIf="waMensajeForm as f">
+                <div class="form-row">
+                  <label for="wa-msg-nombre">Nombre del mensaje</label>
+                  <input id="wa-msg-nombre" type="text" name="waMsgNombre" [(ngModel)]="f.nombre" placeholder="Ej: Aviso nuevo sorteo">
+                </div>
+                <div class="form-row">
+                  <label for="wa-msg-plantilla">Plantilla</label>
+                  <select id="wa-msg-plantilla" name="waMsgPlantilla" [(ngModel)]="f.plantillaKey" (ngModelChange)="onWaPlantillaFormChange()">
+                    <option *ngFor="let p of waPlantillasAprobadas" [value]="p.nombre + '|' + p.idioma">{{ p.nombre }} ({{ p.idioma }})</option>
+                  </select>
+                </div>
+                <ng-container *ngIf="waPlantillaForm as p">
+                  <div class="form-row" *ngFor="let v of p.variables; let i = index">
+                    <label [for]="'wa-msg-var-' + i">Variable {{ waEtiquetaVariable(v) }}</label>
+                    <input [id]="'wa-msg-var-' + i" type="text" [name]="'waMsgVar' + i" [(ngModel)]="f.valores[i]">
+                  </div>
+                  <small class="field-hint" *ngIf="p.variables.length > 0">
+                    Escribe <code>{{ waComodin('nombre') }}</code> para poner el primer nombre de cada contacto
+                    y <code>{{ waComodin('ciudad') }}</code> para su ciudad.
+                  </small>
+                  <div class="form-row">
+                    <label>Vista previa</label>
+                    <div class="wa-preview">{{ waVistaPrevia(p, f.valores) }}</div>
+                  </div>
                 </ng-container>
-                <p class="error-msg" *ngIf="waErrorEnvio">{{ waErrorEnvio }}</p>
+                <div class="wa-confirm">
+                  <button type="button" class="btn-primary" [disabled]="waGuardandoMensaje || !f.nombre.trim() || !waPlantillaForm" (click)="guardarWaMensaje()">
+                    {{ waGuardandoMensaje ? 'Guardando...' : 'Guardar mensaje' }}
+                  </button>
+                  <button type="button" class="btn-outline" (click)="waMensajeForm = null">Cancelar</button>
+                </div>
+                <p class="error-msg" *ngIf="waErrorMensaje">{{ waErrorMensaje }}</p>
+              </div>
+
+              <div class="wa-lista" *ngIf="waMensajes.length > 0">
+                <div class="wa-item" *ngFor="let m of waMensajes">
+                  <div>
+                    <strong>{{ m.nombre }}</strong>
+                    <p class="muted small">{{ waVistaPrevia(waPlantillaDe(m.plantilla, m.idioma), m.valores) || ('Plantilla ' + m.plantilla + ' (no encontrada)') }}</p>
+                  </div>
+                  <div class="wa-item-actions">
+                    <button type="button" class="btn-outline" (click)="editarWaMensaje(m)">Editar</button>
+                    <button type="button" class="btn-link" (click)="eliminarWaMensaje(m)">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+              <p class="muted" *ngIf="waMensajes.length === 0 && !waMensajeForm && waPlantillasAprobadas.length > 0">Aún no hay mensajes guardados.</p>
+            </article>
+
+            <!-- LISTAS -->
+            <article class="admin-card" *ngIf="waSeccion === 'listas'">
+              <header class="card-head">
+                <div>
+                  <h2>Listas de contactos</h2>
+                  <p class="muted">"Clientes de la web" se arma sola con quienes autorizaron WhatsApp al comprar.</p>
+                </div>
+              </header>
+
+              <div class="wa-lista">
+                <ng-container *ngFor="let l of waListas">
+                  <div class="wa-item">
+                    <div>
+                      <strong>{{ l.nombre }}</strong>
+                      <p class="muted small">
+                        {{ l.total }} contacto(s) · {{ l.automatica ? 'Automática' : ('Importada el ' + (l.created_at | date:'shortDate')) }}
+                      </p>
+                    </div>
+                    <div class="wa-item-actions">
+                      <button type="button" class="btn-outline" (click)="verWaLista(l)">{{ waVerLista?.id === l.id ? 'Ocultar' : 'Ver' }}</button>
+                      <button type="button" class="btn-link" *ngIf="!l.automatica" (click)="eliminarWaLista(l)">Eliminar</button>
+                    </div>
+                  </div>
+                  <div class="wa-contactos" *ngIf="waVerLista?.id === l.id">
+                    <p class="muted small" *ngIf="waVerLista!.total > waVerLista!.contactos.length">Mostrando {{ waVerLista!.contactos.length }} de {{ waVerLista!.total }}.</p>
+                    <p class="muted small" *ngIf="waVerLista!.total === 0">Sin contactos.</p>
+                    <ul>
+                      <li *ngFor="let c of waVerLista!.contactos">{{ c.nombre || 'Sin nombre' }} · +{{ c.telefono }}{{ c.ciudad ? ' · ' + c.ciudad : '' }}</li>
+                    </ul>
+                  </div>
+                </ng-container>
+              </div>
+
+              <div class="prueba-correo">
+                <label for="wa-archivo">Importar lista desde Excel o CSV</label>
+                <p class="muted small">Columnas con títulos como <strong>Nombre</strong>, <strong>Celular</strong> y (opcional) <strong>Ciudad</strong>. Celulares de Colombia de 10 dígitos.</p>
+                <input id="wa-archivo" type="file" accept=".xlsx,.csv" [disabled]="waLeyendoArchivo || waImportando" (change)="onWaArchivoLista($event)">
+                <p class="muted small" *ngIf="waLeyendoArchivo">Leyendo archivo…</p>
+
+                <div class="config-form wa-form" *ngIf="waImport as imp">
+                  <p>
+                    <strong>{{ imp.archivo }}</strong>: {{ imp.validos }} celular(es) válido(s)
+                    <ng-container *ngIf="imp.descartados">, {{ imp.descartados }} se descartan (inválidos o repetidos)</ng-container>.
+                  </p>
+                  <div class="form-row">
+                    <label for="wa-lista-nombre">Nombre de la lista</label>
+                    <input id="wa-lista-nombre" type="text" name="waListaNombre" [(ngModel)]="imp.nombre">
+                  </div>
+                  <label class="wa-check">
+                    <input type="checkbox" name="waConsentimiento" [(ngModel)]="imp.consentimiento">
+                    Confirmo que estas personas aceptaron recibir mensajes de Inversiones JCB por WhatsApp.
+                  </label>
+                  <div class="wa-confirm">
+                    <button type="button" class="btn-primary" [disabled]="waImportando || !imp.consentimiento || !imp.nombre.trim() || imp.validos === 0" (click)="guardarWaLista()">
+                      {{ waImportando ? 'Guardando...' : 'Guardar lista' }}
+                    </button>
+                    <button type="button" class="btn-outline" [disabled]="waImportando" (click)="waImport = null">Cancelar</button>
+                  </div>
+                </div>
+                <p class="config-ok" *ngIf="waResultadoLista">{{ waResultadoLista }}</p>
+                <p class="error-msg" *ngIf="waErrorLista">{{ waErrorLista }}</p>
               </div>
             </article>
 
-            <article class="admin-card">
-              <header class="card-head">
-                <div>
-                  <h2>Envíos</h2>
-                  <p class="muted">Últimas campañas y su resultado.</p>
+            <!-- PLANTILLAS -->
+            <ng-container *ngIf="waSeccion === 'plantillas'">
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Plantillas de Meta</h2>
+                    <p class="muted">Solo las aprobadas se pueden usar en un mensaje.</p>
+                  </div>
+                </header>
+                <div class="wa-lista" *ngIf="e.plantillas.length > 0; else sinPlantillas">
+                  <div class="wa-item" *ngFor="let p of e.plantillas">
+                    <div>
+                      <strong>{{ p.nombre }}</strong>
+                      <span class="wa-badge" [class.is-ok]="p.estado === 'APPROVED'" [class.is-fail]="p.estado === 'REJECTED'">{{ waEstadoPlantilla(p.estado) }}</span>
+                      <p class="muted small">{{ p.texto }}</p>
+                      <p class="error-msg small" *ngIf="p.motivoRechazo">Motivo: {{ p.motivoRechazo }}</p>
+                    </div>
+                  </div>
                 </div>
-              </header>
-              <div class="table-wrap" *ngIf="waCampanas.length > 0; else sinCampanas">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Plantilla</th>
-                      <th>Enviados</th>
-                      <th>Fallidos</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <ng-container *ngFor="let c of waCampanas">
-                      <tr>
-                        <td>{{ c.created_at | date:'short' }}</td>
-                        <td>{{ c.plantilla }}</td>
-                        <td>{{ c.enviados }} / {{ c.total }}</td>
-                        <td>
-                          <button type="button" class="btn-link" *ngIf="c.fallidos > 0; else ceroFallidos" (click)="verWaFallidos(c)">
-                            {{ c.fallidos }} (ver)
-                          </button>
-                          <ng-template #ceroFallidos>0</ng-template>
-                        </td>
-                        <td>
-                          {{ c.estado === 'enviando' ? 'Enviando…' : c.estado === 'terminada' ? 'Terminada' : c.estado === 'detenida' ? 'Detenida' : 'Interrumpida' }}
-                          <div class="muted small" *ngIf="c.error">{{ c.error }}</div>
-                        </td>
-                      </tr>
-                      <tr *ngIf="waFallidos?.campanaId === c.id">
-                        <td colspan="5">
-                          <ul class="wa-fallidos">
-                            <li *ngFor="let f of waFallidos!.envios">{{ f.nombre }} (+{{ f.telefono }}): {{ f.error }}</li>
-                          </ul>
-                        </td>
-                      </tr>
-                    </ng-container>
-                  </tbody>
-                </table>
-              </div>
-              <ng-template #sinCampanas><p class="muted">Aún no se ha enviado ninguna campaña.</p></ng-template>
-            </article>
+                <ng-template #sinPlantillas><p class="muted">No hay plantillas en la cuenta de WhatsApp.</p></ng-template>
+              </article>
+
+              <article class="admin-card">
+                <header class="card-head">
+                  <div>
+                    <h2>Nueva plantilla</h2>
+                    <p class="muted">Se envía a revisión de Meta; suele aprobarse en minutos u horas.</p>
+                  </div>
+                </header>
+                <div class="config-form wa-form">
+                  <div class="form-row">
+                    <label for="wa-pl-nombre">Nombre (minúsculas y guion bajo)</label>
+                    <input id="wa-pl-nombre" type="text" name="waPlNombre" [(ngModel)]="waNuevaPlantilla.nombre" placeholder="nuevo_sorteo">
+                  </div>
+                  <div class="form-row">
+                    <label for="wa-pl-categoria">Categoría</label>
+                    <select id="wa-pl-categoria" name="waPlCategoria" [(ngModel)]="waNuevaPlantilla.categoria">
+                      <option value="MARKETING">Marketing (promociones, avisos de sorteos)</option>
+                      <option value="UTILITY">Utilidad (confirmaciones de una compra)</option>
+                    </select>
+                  </div>
+                  <div class="form-row">
+                    <label for="wa-pl-texto">Texto</label>
+                    <textarea id="wa-pl-texto" name="waPlTexto" rows="4" [(ngModel)]="waNuevaPlantilla.texto" (ngModelChange)="onWaTextoPlantillaChange()"
+                              placeholder="Hola {{ '{' }}{{ '{' }}1{{ '}' }}{{ '}' }}, ya abrimos un nuevo sorteo..."></textarea>
+                    <button type="button" class="btn-link" (click)="waAgregarVariable()">+ Agregar variable</button>
+                    <small class="field-hint">Las variables no pueden ir al principio ni al final del texto.</small>
+                  </div>
+                  <div class="form-row" *ngFor="let v of waVariablesNuevaPlantilla; let i = index">
+                    <label [for]="'wa-pl-ej-' + i">Ejemplo para {{ waEtiquetaVariable(v) }}</label>
+                    <input [id]="'wa-pl-ej-' + i" type="text" [name]="'waPlEj' + i" [(ngModel)]="waNuevaPlantilla.ejemplos[i]" placeholder="Ej: María">
+                  </div>
+                  <div class="form-row">
+                    <label for="wa-pl-pie">Pie (opcional)</label>
+                    <input id="wa-pl-pie" type="text" name="waPlPie" maxlength="60" [(ngModel)]="waNuevaPlantilla.pie">
+                  </div>
+                  <div class="form-row">
+                    <label for="wa-pl-boton">Botón con enlace (opcional)</label>
+                    <div class="prueba-correo-row">
+                      <input id="wa-pl-boton" type="text" name="waPlBoton" maxlength="25" placeholder="Ver juegos" [(ngModel)]="waNuevaPlantilla.botonTexto">
+                      <input type="url" name="waPlUrl" placeholder="https://inversionesjcb.online" [(ngModel)]="waNuevaPlantilla.botonUrl">
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary" [disabled]="waCreandoPlantilla || !waNuevaPlantilla.nombre.trim() || !waNuevaPlantilla.texto.trim()" (click)="crearWaPlantilla()">
+                    {{ waCreandoPlantilla ? 'Enviando...' : 'Enviar a revisión' }}
+                  </button>
+                  <p class="config-ok" *ngIf="waResultadoPlantilla">{{ waResultadoPlantilla }}</p>
+                  <p class="error-msg" *ngIf="waErrorPlantilla">{{ waErrorPlantilla }}</p>
+                </div>
+              </article>
+            </ng-container>
           </ng-container>
         </section>
 

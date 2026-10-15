@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico, ResumenReemplazo, WhatsappEstado, WhatsappCampana, WhatsappPlantilla } from '../../core/services/admin.service';
+import { AdminService, AdminStats, AdminOrder, Sorteo, SorteoGanadorResponse, BeneficioAnticipado, Diagnostico, ResumenReemplazo, WhatsappEstado, WhatsappCampana, WhatsappPlantilla, WhatsappMensaje, WhatsappLista, WhatsappContacto, NuevaPlantillaWhatsapp } from '../../core/services/admin.service';
 import { AdminAuthService } from '../../core/services/admin-auth.service';
 
 @Component({
@@ -157,13 +157,17 @@ export class AdminComponent implements OnInit, OnDestroy {
   mostrarConfigAnticipados = false;
 
   /** CRM de WhatsApp */
+  waSeccion: 'enviar' | 'mensajes' | 'listas' | 'plantillas' = 'enviar';
   waEstado: WhatsappEstado | null = null;
   waCargando = false;
   waError = '';
   waCampanas: WhatsappCampana[] = [];
-  /** Clave `nombre|idioma` de la plantilla elegida. */
-  waPlantillaKey = '';
-  waValores: string[] = [];
+  waMensajes: WhatsappMensaje[] = [];
+  waListas: WhatsappLista[] = [];
+
+  /** Enviar: mensaje y lista elegidos. */
+  waEnvioMensajeId: number | null = null;
+  waEnvioListaId: number | 'clientes' | null = 'clientes';
   waTelefonoPrueba = '';
   waEnviandoPrueba = false;
   waResultadoPrueba = '';
@@ -171,6 +175,25 @@ export class AdminComponent implements OnInit, OnDestroy {
   waConfirmando = false;
   waIniciando = false;
   waFallidos: { campanaId: number; envios: Array<{ nombre: string; telefono: string; error: string }> } | null = null;
+
+  /** Mensajes: formulario de crear/editar (null = cerrado). */
+  waMensajeForm: { id?: number; nombre: string; plantillaKey: string; valores: string[] } | null = null;
+  waGuardandoMensaje = false;
+  waErrorMensaje = '';
+
+  /** Listas: importación desde Excel/CSV y vista de contactos. */
+  waImport: { nombre: string; archivo: string; contactos: WhatsappContacto[]; validos: number; descartados: number; consentimiento: boolean } | null = null;
+  waLeyendoArchivo = false;
+  waImportando = false;
+  waErrorLista = '';
+  waResultadoLista = '';
+  waVerLista: { id: number | 'clientes'; nombre: string; total: number; contactos: WhatsappContacto[] } | null = null;
+
+  /** Plantillas: formulario para enviar una nueva a revisión de Meta. */
+  waNuevaPlantilla: NuevaPlantillaWhatsapp = this.plantillaVacia();
+  waCreandoPlantilla = false;
+  waErrorPlantilla = '';
+  waResultadoPlantilla = '';
   private waPollingId: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -245,17 +268,22 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
   }
 
-  get waPlantilla(): WhatsappPlantilla | null {
-    return this.waEstado?.plantillas.find((p) => `${p.nombre}|${p.idioma}` === this.waPlantillaKey) ?? null;
+  // ----- CRM de WhatsApp -----
+
+  get waPlantillasAprobadas(): WhatsappPlantilla[] {
+    return (this.waEstado?.plantillas || []).filter((p) => p.estado === 'APPROVED');
   }
 
-  /** Texto de la plantilla con los valores escritos, usando un cliente de ejemplo para {nombre}. */
-  get waVistaPrevia(): string {
-    const p = this.waPlantilla;
+  waPlantillaDe(nombre: string, idioma: string): WhatsappPlantilla | null {
+    return this.waEstado?.plantillas.find((p) => p.nombre === nombre && p.idioma === idioma) ?? null;
+  }
+
+  /** Texto de la plantilla con los valores puestos, usando un cliente de ejemplo para {nombre} y {ciudad}. */
+  waVistaPrevia(p: WhatsappPlantilla | null, valores: string[]): string {
     if (!p) return '';
     let texto = p.texto;
     p.variables.forEach((v, i) => {
-      const valor = (this.waValores[i] || `{{${v}}}`)
+      const valor = (valores[i] || `{{${v}}}`)
         .replace(/\{nombre\}/gi, 'María')
         .replace(/\{nombre_completo\}/gi, 'María Pérez')
         .replace(/\{ciudad\}/gi, 'Bucaramanga');
@@ -273,9 +301,35 @@ export class AdminComponent implements OnInit, OnDestroy {
     return `{${nombre}}`;
   }
 
-  get waValoresCompletos(): boolean {
-    const p = this.waPlantilla;
-    return !!p && p.variables.every((_, i) => !!(this.waValores[i] || '').trim());
+  waEstadoPlantilla(estado: string): string {
+    const nombres: Record<string, string> = {
+      APPROVED: 'Aprobada', PENDING: 'En revisión', REJECTED: 'Rechazada', PAUSED: 'Pausada', DISABLED: 'Desactivada', IN_APPEAL: 'En apelación'
+    };
+    return nombres[estado] || estado;
+  }
+
+  get waMensajeEnvio(): WhatsappMensaje | null {
+    return this.waMensajes.find((m) => m.id === this.waEnvioMensajeId) ?? null;
+  }
+
+  get waListaEnvio(): WhatsappLista | null {
+    return this.waListas.find((l) => l.id === this.waEnvioListaId) ?? null;
+  }
+
+  /** Total que recibirá la campaña: la lista más los números internos de prueba (si no están ya en la lista). */
+  get waTotalEnvio(): number {
+    return (this.waListaEnvio?.total ?? 0) + (this.waEstado?.numerosPrueba ?? 0);
+  }
+
+  /** null si el mensaje elegido se puede enviar; si no, el motivo. */
+  get waProblemaMensaje(): string | null {
+    const m = this.waMensajeEnvio;
+    if (!m) return 'Elige un mensaje.';
+    const p = this.waPlantillaDe(m.plantilla, m.idioma);
+    if (!p) return `La plantilla "${m.plantilla}" ya no existe en Meta.`;
+    if (p.estado !== 'APPROVED') return `La plantilla "${m.plantilla}" está: ${this.waEstadoPlantilla(p.estado)}.`;
+    if (p.variables.some((_, i) => !(m.valores[i] || '').trim())) return 'Al mensaje le faltan valores: edítalo.';
+    return null;
   }
 
   get waCampanaActiva(): WhatsappCampana | null {
@@ -295,10 +349,6 @@ export class AdminComponent implements OnInit, OnDestroy {
       next: (e) => {
         this.waCargando = false;
         this.waEstado = e;
-        if (!e.plantillas.some((p) => `${p.nombre}|${p.idioma}` === this.waPlantillaKey)) {
-          this.waPlantillaKey = e.plantillas.length ? `${e.plantillas[0].nombre}|${e.plantillas[0].idioma}` : '';
-          this.onWaPlantillaChange();
-        }
       },
       error: (err) => {
         this.waCargando = false;
@@ -306,7 +356,29 @@ export class AdminComponent implements OnInit, OnDestroy {
         else this.waError = err?.error?.error || 'No se pudo consultar el estado de WhatsApp.';
       }
     });
+    this.cargarWaMensajes();
+    this.cargarWaListas();
     this.cargarWaCampanas();
+  }
+
+  cargarWaMensajes(): void {
+    this.adminService.getWhatsappMensajes().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.waMensajes = r.mensajes;
+        if (!this.waMensajes.some((m) => m.id === this.waEnvioMensajeId)) this.waEnvioMensajeId = this.waMensajes[0]?.id ?? null;
+      },
+      error: (err) => this.waErrorComun(err)
+    });
+  }
+
+  cargarWaListas(): void {
+    this.adminService.getWhatsappListas().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.waListas = r.listas;
+        if (!this.waListas.some((l) => l.id === this.waEnvioListaId)) this.waEnvioListaId = 'clientes';
+      },
+      error: (err) => this.waErrorComun(err)
+    });
   }
 
   cargarWaCampanas(): void {
@@ -316,48 +388,47 @@ export class AdminComponent implements OnInit, OnDestroy {
         if (this.waCampanaActiva) this.startWaPolling();
         else this.stopWaPolling();
       },
-      error: (err) => {
-        if (err?.status === 401) this.on401();
-      }
+      error: (err) => this.waErrorComun(err)
     });
   }
 
-  onWaPlantillaChange(): void {
-    this.waValores = (this.waPlantilla?.variables || []).map(() => '');
+  private waErrorComun(err: { status?: number }): void {
+    if (err?.status === 401) this.on401();
+  }
+
+  // --- Enviar ---
+
+  onWaEnvioChange(): void {
+    this.waConfirmando = false;
     this.waResultadoPrueba = '';
     this.waErrorEnvio = '';
-    this.waConfirmando = false;
   }
 
   enviarWaPrueba(): void {
-    const p = this.waPlantilla;
-    if (!p) return;
+    if (!this.waEnvioMensajeId) return;
     this.waEnviandoPrueba = true;
     this.waResultadoPrueba = '';
     this.waErrorEnvio = '';
-    this.adminService.enviarWhatsappPrueba({
-      plantilla: p.nombre, idioma: p.idioma, valores: this.waValores, telefono: this.waTelefonoPrueba
-    }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (r) => {
-        this.waEnviandoPrueba = false;
-        this.waResultadoPrueba = `Prueba enviada al +${r.telefono}. Revisa ese WhatsApp.`;
-      },
-      error: (err) => {
-        this.waEnviandoPrueba = false;
-        if (err?.status === 401) this.on401();
-        else this.waErrorEnvio = err?.error?.error || 'No se pudo enviar la prueba.';
-      }
-    });
+    this.adminService.enviarWhatsappPrueba({ mensajeId: this.waEnvioMensajeId, telefono: this.waTelefonoPrueba })
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: (r) => {
+          this.waEnviandoPrueba = false;
+          this.waResultadoPrueba = `Prueba enviada al +${r.telefono}. Revisa ese WhatsApp.`;
+        },
+        error: (err) => {
+          this.waEnviandoPrueba = false;
+          if (err?.status === 401) this.on401();
+          else this.waErrorEnvio = err?.error?.error || 'No se pudo enviar la prueba.';
+        }
+      });
   }
 
   iniciarWaCampana(): void {
-    const p = this.waPlantilla;
-    const total = this.waEstado?.destinatarios.total ?? 0;
-    if (!p || total === 0) return;
+    if (!this.waEnvioMensajeId || this.waEnvioListaId === null) return;
     this.waIniciando = true;
     this.waErrorEnvio = '';
     this.adminService.iniciarWhatsappCampana({
-      plantilla: p.nombre, idioma: p.idioma, valores: this.waValores, confirmarTotal: total
+      mensajeId: this.waEnvioMensajeId, listaId: this.waEnvioListaId, confirmarTotal: this.waTotalEnvio
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.waIniciando = false;
@@ -383,9 +454,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
     this.adminService.getWhatsappFallidos(c.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => (this.waFallidos = { campanaId: c.id, envios: r.envios }),
-      error: (err) => {
-        if (err?.status === 401) this.on401();
-      }
+      error: (err) => this.waErrorComun(err)
     });
   }
 
@@ -399,6 +468,246 @@ export class AdminComponent implements OnInit, OnDestroy {
       clearInterval(this.waPollingId);
       this.waPollingId = null;
     }
+  }
+
+  // --- Mensajes guardados ---
+
+  get waPlantillaForm(): WhatsappPlantilla | null {
+    const f = this.waMensajeForm;
+    return f ? this.waEstado?.plantillas.find((p) => `${p.nombre}|${p.idioma}` === f.plantillaKey) ?? null : null;
+  }
+
+  nuevoWaMensaje(): void {
+    const p = this.waPlantillasAprobadas[0];
+    this.waErrorMensaje = '';
+    this.waMensajeForm = {
+      nombre: '',
+      plantillaKey: p ? `${p.nombre}|${p.idioma}` : '',
+      valores: (p?.variables || []).map(() => '')
+    };
+  }
+
+  editarWaMensaje(m: WhatsappMensaje): void {
+    this.waErrorMensaje = '';
+    this.waMensajeForm = { id: m.id, nombre: m.nombre, plantillaKey: `${m.plantilla}|${m.idioma}`, valores: [...m.valores] };
+    const p = this.waPlantillaForm;
+    if (p) this.waMensajeForm.valores = p.variables.map((_, i) => m.valores[i] || '');
+  }
+
+  onWaPlantillaFormChange(): void {
+    if (this.waMensajeForm) this.waMensajeForm.valores = (this.waPlantillaForm?.variables || []).map(() => '');
+  }
+
+  guardarWaMensaje(): void {
+    const f = this.waMensajeForm;
+    const p = this.waPlantillaForm;
+    if (!f || !p) return;
+    this.waGuardandoMensaje = true;
+    this.waErrorMensaje = '';
+    this.adminService.guardarWhatsappMensaje({ id: f.id, nombre: f.nombre, plantilla: p.nombre, idioma: p.idioma, valores: f.valores })
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.waGuardandoMensaje = false;
+          this.waMensajeForm = null;
+          this.cargarWaMensajes();
+        },
+        error: (err) => {
+          this.waGuardandoMensaje = false;
+          if (err?.status === 401) this.on401();
+          else this.waErrorMensaje = err?.error?.error || 'No se pudo guardar el mensaje.';
+        }
+      });
+  }
+
+  eliminarWaMensaje(m: WhatsappMensaje): void {
+    if (!confirm(`¿Eliminar el mensaje "${m.nombre}"?`)) return;
+    this.adminService.eliminarWhatsappMensaje(m.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.cargarWaMensajes(),
+      error: (err) => this.waErrorComun(err)
+    });
+  }
+
+  // --- Listas ---
+
+  /** Mismo criterio que el servidor: celular de Colombia de 10 dígitos que empieza por 3 (con o sin 57). */
+  private waTelefonoValido(raw: unknown): boolean {
+    const d = String(raw ?? '').replace(/\D/g, '');
+    return (d.length === 10 && d.startsWith('3')) || (d.length === 12 && d.startsWith('573'));
+  }
+
+  /**
+   * Convierte las filas de la hoja en contactos. Busca una fila de títulos (celular/teléfono, nombre, ciudad);
+   * si no la hay, toma como celular la columna con más números válidos y como nombre la primera de texto.
+   */
+  private waFilasAContactos(filas: unknown[][]): WhatsappContacto[] {
+    const texto = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
+    const esTitulo = (fila: unknown[]) => fila.some((c) => /cel|tel|whats|m[oó]vil|n[uú]mero|phone/i.test(texto(c)));
+    let inicio = 0;
+    let colTel = -1;
+    let colNombre = -1;
+    let colCiudad = -1;
+    const idxTitulos = filas.slice(0, 10).findIndex(esTitulo);
+    if (idxTitulos >= 0) {
+      const t = filas[idxTitulos].map(texto);
+      colTel = t.findIndex((c) => /cel|tel|whats|m[oó]vil|n[uú]mero|phone/i.test(c));
+      colNombre = t.findIndex((c) => /nombre|name|cliente/i.test(c));
+      colCiudad = t.findIndex((c) => /ciudad|city|municipio/i.test(c));
+      inicio = idxTitulos + 1;
+    } else {
+      const ancho = Math.max(0, ...filas.map((f) => f.length));
+      let mejor = 0;
+      for (let c = 0; c < ancho; c++) {
+        const n = filas.filter((f) => this.waTelefonoValido(f[c])).length;
+        if (n > mejor) { mejor = n; colTel = c; }
+      }
+      colNombre = Array.from({ length: ancho }, (_, c) => c)
+        .find((c) => c !== colTel && filas.some((f) => /[a-záéíóúñ]/i.test(texto(f[c])))) ?? -1;
+    }
+    if (colTel < 0) return [];
+    return filas.slice(inicio)
+      .map((f) => ({
+        nombre: colNombre >= 0 ? texto(f[colNombre]) : '',
+        telefono: texto(f[colTel]),
+        ciudad: colCiudad >= 0 ? texto(f[colCiudad]) : ''
+      }))
+      .filter((c) => c.telefono || c.nombre);
+  }
+
+  async onWaArchivoLista(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.waErrorLista = '';
+    this.waResultadoLista = '';
+    this.waLeyendoArchivo = true;
+    try {
+      let filas: unknown[][];
+      if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
+        const contenido = await file.text();
+        const sep = (contenido.split('\n')[0].match(/;/g)?.length ?? 0) > (contenido.split('\n')[0].match(/,/g)?.length ?? 0) ? ';' : ',';
+        filas = contenido.split(/\r?\n/).filter((l) => l.trim()).map((l) => l.split(sep).map((c) => c.replace(/^"|"$/g, '')));
+      } else {
+        const { readSheet } = await import('read-excel-file/browser');
+        filas = (await readSheet(file)) as unknown[][];
+      }
+      const contactos = this.waFilasAContactos(filas);
+      if (contactos.length === 0) {
+        this.waErrorLista = 'No encontré una columna de celulares. Usa columnas con títulos como "Nombre" y "Celular".';
+        this.waImport = null;
+      } else {
+        const vistos = new Set<string>();
+        let validos = 0;
+        for (const c of contactos) {
+          const d = c.telefono.replace(/\D/g, '').slice(-10);
+          if (this.waTelefonoValido(c.telefono) && !vistos.has(d)) { vistos.add(d); validos++; }
+        }
+        this.waImport = {
+          nombre: file.name.replace(/\.[^.]+$/, ''),
+          archivo: file.name,
+          contactos,
+          validos,
+          descartados: contactos.length - validos,
+          consentimiento: false
+        };
+      }
+    } catch {
+      this.waErrorLista = 'No se pudo leer el archivo. Usa un Excel (.xlsx) o un CSV.';
+      this.waImport = null;
+    } finally {
+      this.waLeyendoArchivo = false;
+    }
+  }
+
+  guardarWaLista(): void {
+    const imp = this.waImport;
+    if (!imp || !imp.consentimiento) return;
+    this.waImportando = true;
+    this.waErrorLista = '';
+    this.adminService.importarWhatsappLista({ nombre: imp.nombre, contactos: imp.contactos, consentimiento: true })
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: (r) => {
+          this.waImportando = false;
+          this.waImport = null;
+          this.waResultadoLista = `Lista guardada con ${r.guardados} contactos${r.descartados ? ` (${r.descartados} descartados por celular inválido o repetido)` : ''}.`;
+          this.cargarWaListas();
+        },
+        error: (err) => {
+          this.waImportando = false;
+          if (err?.status === 401) this.on401();
+          else this.waErrorLista = err?.error?.error || 'No se pudo guardar la lista.';
+        }
+      });
+  }
+
+  verWaLista(l: WhatsappLista): void {
+    if (this.waVerLista?.id === l.id) {
+      this.waVerLista = null;
+      return;
+    }
+    this.adminService.getWhatsappContactos(l.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => (this.waVerLista = { id: l.id, nombre: l.nombre, total: r.total, contactos: r.contactos }),
+      error: (err) => this.waErrorComun(err)
+    });
+  }
+
+  eliminarWaLista(l: WhatsappLista): void {
+    if (l.automatica || typeof l.id !== 'number') return;
+    if (!confirm(`¿Eliminar la lista "${l.nombre}" y sus ${l.total} contactos?`)) return;
+    const id = l.id;
+    this.adminService.eliminarWhatsappLista(id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        if (this.waVerLista?.id === id) this.waVerLista = null;
+        this.cargarWaListas();
+      },
+      error: (err) => this.waErrorComun(err)
+    });
+  }
+
+  // --- Plantillas ---
+
+  plantillaVacia(): NuevaPlantillaWhatsapp {
+    return { nombre: '', categoria: 'MARKETING', texto: '', ejemplos: [], pie: 'Inversiones JCB', botonTexto: '', botonUrl: '' };
+  }
+
+  /** Variables {{1}}, {{2}}... que tiene el texto de la plantilla nueva. */
+  get waVariablesNuevaPlantilla(): string[] {
+    const vistas: string[] = [];
+    for (const m of this.waNuevaPlantilla.texto.matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
+      if (!vistas.includes(m[1])) vistas.push(m[1]);
+    }
+    return vistas;
+  }
+
+  onWaTextoPlantillaChange(): void {
+    const n = this.waVariablesNuevaPlantilla.length;
+    const e = this.waNuevaPlantilla.ejemplos;
+    this.waNuevaPlantilla.ejemplos = Array.from({ length: n }, (_, i) => e[i] || '');
+  }
+
+  waAgregarVariable(): void {
+    const n = this.waVariablesNuevaPlantilla.length + 1;
+    this.waNuevaPlantilla.texto = `${this.waNuevaPlantilla.texto.trimEnd()} {{${n}}} `;
+    this.onWaTextoPlantillaChange();
+  }
+
+  crearWaPlantilla(): void {
+    this.waCreandoPlantilla = true;
+    this.waErrorPlantilla = '';
+    this.waResultadoPlantilla = '';
+    this.adminService.crearWhatsappPlantilla(this.waNuevaPlantilla).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.waCreandoPlantilla = false;
+        this.waResultadoPlantilla = 'Plantilla enviada a revisión. Meta suele responder en minutos u horas.';
+        this.waNuevaPlantilla = this.plantillaVacia();
+        this.cargarWhatsapp();
+      },
+      error: (err) => {
+        this.waCreandoPlantilla = false;
+        if (err?.status === 401) this.on401();
+        else this.waErrorPlantilla = err?.error?.error || 'No se pudo crear la plantilla.';
+      }
+    });
   }
 
   /** Envía un correo real para confirmar que los comprobantes llegan. */
