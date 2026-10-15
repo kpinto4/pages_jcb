@@ -1,0 +1,37 @@
+# Revisa cada push y pull request a main: que la web compile en modo producción (lo mismo que hace
+# el servidor de Voriam al arrancar) y que los archivos del backend no tengan errores de sintaxis.
+# Si algo falla, GitHub lo marca en rojo antes de reiniciar el servidor.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Instalar dependencias de la web
+        run: npm ci
+
+      - name: Instalar dependencias del servidor
+        run: npm ci --prefix server
+
+      - name: Compilar la web (producción)
+        run: npm run build
+
+      - name: Revisar sintaxis del servidor
+        run: for f in server/*.js; do node --check "$f"; done
