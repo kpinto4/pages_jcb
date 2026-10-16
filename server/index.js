@@ -2698,6 +2698,7 @@ app.get('/api/admin/whatsapp/estado', async (req, res) => {
       error: null,
       clientesWeb: { total: contactos.length, sinAutorizacion, telefonoInvalido, totalClientes },
       numerosPrueba: numerosInternosWhatsapp().length,
+      tokenVence: undefined,
       campanaEnCurso: campanaWhatsappEnCurso
     };
     if (out.configurado) {
@@ -2707,6 +2708,8 @@ app.get('/api/admin/whatsapp/estado', async (req, res) => {
       } catch (e) {
         out.error = e.message;
       }
+      // Aparte: si Meta no deja consultar el token, el resto del estado sigue sirviendo.
+      out.tokenVence = await whatsapp.vencimientoToken().catch(() => undefined);
     }
     res.json(toJSONSafe(out));
   } catch (err) {

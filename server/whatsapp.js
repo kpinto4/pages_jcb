@@ -76,6 +76,16 @@ export async function estadoNumero() {
   return graph(`${phoneNumberId()}?fields=display_phone_number,verified_name,status,quality_rating,messaging_limit_tier`);
 }
 
+/**
+ * Fecha de vencimiento del token (ISO) o null si no vence (token permanente de usuario del sistema).
+ * Un token de usuario ampliado dura 60 días y hay que renovarlo a mano.
+ */
+export async function vencimientoToken() {
+  const data = await graph(`debug_token?input_token=${encodeURIComponent(token())}`);
+  const exp = Number(data?.data?.expires_at || 0);
+  return exp > 0 ? new Date(exp * 1000).toISOString() : null;
+}
+
 /** Nombres de las variables del cuerpo de la plantilla: ['1','2'] (posicionales) o ['nombre', ...] (con nombre). */
 function variablesDelCuerpo(texto) {
   const vistas = [];

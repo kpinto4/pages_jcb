@@ -336,6 +336,12 @@ export class AdminComponent implements OnInit, OnDestroy {
     return this.waCampanas.find((c) => c.estado === 'enviando') ?? null;
   }
 
+  /** Días que le quedan al token de WhatsApp (null si no vence o no se sabe). */
+  get waDiasToken(): number | null {
+    const v = this.waEstado?.tokenVence;
+    return v ? Math.ceil((new Date(v).getTime() - Date.now()) / 86400000) : null;
+  }
+
   /** Meta limita los contactos nuevos por día según el nivel del número (TIER_250 = 250). */
   get waLimiteDiario(): number | null {
     const m = /TIER_(\d+)/.exec(this.waEstado?.numero?.messaging_limit_tier || '');

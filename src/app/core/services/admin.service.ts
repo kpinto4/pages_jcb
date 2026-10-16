@@ -155,6 +155,8 @@ export interface WhatsappEstado {
   error: string | null;
   clientesWeb: { total: number; sinAutorizacion: number; telefonoInvalido: number; totalClientes: number };
   numerosPrueba: number;
+  /** Vencimiento del token (ISO); null = no vence; ausente = no se pudo consultar. */
+  tokenVence?: string | null;
   campanaEnCurso: number | string | null;
 }
 

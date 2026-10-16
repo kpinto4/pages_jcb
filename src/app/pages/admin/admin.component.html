@@ -781,6 +781,17 @@
                     </p>
                   </div>
                 </div>
+                <div class="diagnostico-item" *ngIf="e.tokenVence !== undefined" [class.is-ok]="waDiasToken === null || waDiasToken > 15" [class.is-fail]="waDiasToken !== null && waDiasToken <= 15">
+                  <span class="diagnostico-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>Token de WhatsApp</strong>
+                    <p *ngIf="waDiasToken === null">Permanente, no vence.</p>
+                    <p *ngIf="waDiasToken !== null">
+                      Vence el {{ e.tokenVence | date:'longDate' }} ({{ waDiasToken > 0 ? 'faltan ' + waDiasToken + ' días' : 'ya venció' }}).
+                      <ng-container *ngIf="waDiasToken <= 15">Renuévalo en el Explorador de la API Graph → Ampliar token y actualiza WHATSAPP_TOKEN.</ng-container>
+                    </p>
+                  </div>
+                </div>
                 <div class="diagnostico-item" [class.is-ok]="e.clientesWeb.total > 0">
                   <span class="diagnostico-dot" aria-hidden="true"></span>
                   <div>
